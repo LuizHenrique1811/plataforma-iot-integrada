@@ -48,6 +48,7 @@ services:
       - "${BIND_ADDR:-127.0.0.1}:3000:3000"
     volumes:
       - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-dados:/var/lib/grafana
     depends_on:
       - timescaledb

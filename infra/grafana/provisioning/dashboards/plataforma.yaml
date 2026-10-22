@@ -1,0 +1,11 @@
+# Painéis provisionados por arquivo (infra/grafana/dashboards), versionados no repositório.
+apiVersion: 1
+
+providers:
+  - name: plataforma-iot
+    folder: Plataforma IoT Integrada
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

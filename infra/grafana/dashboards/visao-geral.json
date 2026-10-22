@@ -1,0 +1,205 @@
+{
+  "uid": "plataforma-visao-geral",
+  "title": "Plataforma IoT - visão geral",
+  "description": "Medições, último estado, alarmes, mensagens rejeitadas e desempenho da ingestão (RNF-01, RNF-02). Os painéis são genéricos: o inquilino, os dispositivos e as grandezas vêm do catálogo (RNF-08).",
+  "tags": ["plataforma-iot"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "inquilino",
+        "label": "Inquilino",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+        "query": "SELECT id FROM inquilinos ORDER BY id",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "dispositivo",
+        "label": "Dispositivos",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+        "query": "SELECT id FROM dispositivos WHERE inquilino_id = '$inquilino' ORDER BY id",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Mensagens no período",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(DISTINCT id_mensagem) AS mensagens FROM medicoes WHERE inquilino_id = '$inquilino' AND $__timeFilter(recebido_em)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Alarmes abertos",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) AS alarmes FROM alarmes WHERE inquilino_id = '$inquilino' AND estado <> 'resolvido'"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Rejeitadas no período (DLQ)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) AS rejeitadas FROM rejeitadas WHERE inquilino_id = '$inquilino' AND $__timeFilter(recebido_em)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Bordas: segundos sem sincronizar",
+      "description": "Há quanto tempo cada nó de borda não entrega nada à central (RF-EDG-06, ADR-0010).",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT via AS borda, round(extract(epoch FROM now() - recebido_em)) AS segundos FROM contato_da_borda WHERE inquilino_id = '$inquilino' ORDER BY via"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Medições (pelo horário da medição)",
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT medido_em AS time, dispositivo_id || ' ' || grandeza || ' (' || coalesce(unidade, '') || ')' AS metric, valor FROM medicoes WHERE inquilino_id = '$inquilino' AND dispositivo_id IN ($dispositivo) AND valor IS NOT NULL AND $__timeFilter(medido_em) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Último estado",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT dispositivo_id AS dispositivo, grandeza, round(valor::numeric, 2) AS valor, unidade, medido_em AS \"medido em\", suspeita FROM ultimo_estado WHERE inquilino_id = '$inquilino' AND dispositivo_id IN ($dispositivo) ORDER BY 1, 2"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Alarmes",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT ocorrido_em AS \"ocorrido em\", regra_id AS regra, dispositivo_id AS dispositivo, severidade, estado, origem, mensagem FROM alarmes WHERE inquilino_id = '$inquilino' ORDER BY ocorrido_em DESC LIMIT 30"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Mensagens por segundo (todos os inquilinos)",
+      "description": "Vazão da ingestão, para o teste de carga (RNF-01).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT time_bucket('10 seconds', recebido_em) AS time, count(DISTINCT id_mensagem) / 10.0 AS \"mensagens/s\" FROM medicoes WHERE $__timeFilter(recebido_em) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Latência da ingestão até a persistência - p95 (RNF-02)",
+      "description": "Diferença entre a recepção da mensagem e a gravação, por janela de 10 s. Meta: p95 de até 2 s.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 2 }] },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT time_bucket('10 seconds', recebido_em) AS time, percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM persistido_em - recebido_em)) AS \"p95 (s)\" FROM medicoes WHERE $__timeFilter(recebido_em) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    }
+  ]
+}
