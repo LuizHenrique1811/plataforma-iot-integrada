@@ -15,6 +15,7 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from dominio.acoes import ExecutorDeAcao
@@ -34,9 +35,20 @@ from portas.regras import RepositorioDeAlarmes, RepositorioDeRegras
 log = logging.getLogger("servico_core.regras")
 
 EVENTO_DE_ALARME = "alarme"
+EVENTO_DE_ALARME_RESOLVIDO = "alarme_resolvido"
+ORIGEM_IMPORTADA = "borda"
+
+# Aviso de que alarmes de uma regra foram resolvidos neste nó: (inquilino, regra, dispositivo, quando).
+AoResolver = Callable[[str, str, str, datetime], None]
 
 
 class MotorDeRegras:
+    """Cada nó abre e resolve só os alarmes que ele mesmo gera (origem igual ao âmbito do motor).
+
+    Os alarmes que chegam da borda como evento são abertos e resolvidos pelos eventos "alarme" e
+    "alarme_resolvido", com o horário em que aconteceram lá (RF-PRO-05).
+    """
+
     def __init__(
         self,
         regras: RepositorioDeRegras,
@@ -45,20 +57,29 @@ class MotorDeRegras:
         *,
         ambito: str,
         validade_do_cache_s: float = 10.0,
+        ao_resolver: AoResolver | None = None,
     ) -> None:
         self._regras = regras
         self._alarmes = alarmes
         self._executores = executores
         self._ambito = ambito
         self._validade_do_cache_s = validade_do_cache_s
+        self._ao_resolver = ao_resolver
         self._cache: dict[str, tuple[float, list[Regra]]] = {}
         self._trava = threading.Lock()
 
     # Observador do pipeline de ingestão ---------------------------------------------------
 
     def mensagem_aceita(self, mensagem: MensagemAceita) -> list[Disparo]:
-        if mensagem.tipo == "evento" and (mensagem.evento or {}).get("nome") == EVENTO_DE_ALARME:
+        nome_do_evento = (mensagem.evento or {}).get("nome") if mensagem.tipo == "evento" else None
+        if nome_do_evento == EVENTO_DE_ALARME:
             self._registrar_alarme_da_borda(mensagem)
+            return []
+        if nome_do_evento == EVENTO_DE_ALARME_RESOLVIDO:
+            regra = str(((mensagem.evento or {}).get("detalhes") or {}).get("regra") or "borda")
+            self._alarmes.resolver_abertos(
+                mensagem.inquilino, regra, mensagem.dispositivo, mensagem.timestamp, ORIGEM_IMPORTADA
+            )
             return []
         if mensagem.tipo != "telemetria" or not mensagem.atual:
             return []
@@ -153,9 +174,11 @@ class MotorDeRegras:
         if estado is None or estado == EstadoDaRegra():
             return
         if estado.disparada:
-            resolvidos = self._alarmes.resolver_abertos(inquilino, regra.id, dispositivo, quando)
+            resolvidos = self._alarmes.resolver_abertos(inquilino, regra.id, dispositivo, quando, self._ambito)
             if resolvidos:
                 log.info("alarme resolvido: condição da regra %s deixou de valer", regra.id)
+                if self._ao_resolver is not None:
+                    self._ao_resolver(inquilino, regra.id, dispositivo, quando)
         self._regras.salvar_estado(inquilino, regra.id, dispositivo, EstadoDaRegra())
 
     def _registrar_alarme_da_borda(self, mensagem: MensagemAceita) -> None:
@@ -172,7 +195,7 @@ class MotorDeRegras:
                 estado=EstadoAlarme.ATIVO,
                 ocorrido_em=mensagem.timestamp,
                 mensagem=detalhes.get("mensagem"),
-                origem="borda",
+                origem=ORIGEM_IMPORTADA,
                 id_mensagem=mensagem.id_mensagem,
             )
         )

@@ -343,7 +343,7 @@ class AlarmesEmMemoria:
     alarmes: dict[str, Alarme] = field(default_factory=dict)
 
     def inserir_alarme(self, alarme: Alarme) -> bool:
-        if alarme.origem != "borda" and self._abertos(alarme.inquilino, alarme.regra, alarme.dispositivo):
+        if self._abertos(alarme.inquilino, alarme.regra, alarme.dispositivo, alarme.origem):
             return False
         self.alarmes[alarme.id] = alarme
         return True
@@ -355,8 +355,8 @@ class AlarmesEmMemoria:
     def atualizar_alarme(self, alarme: Alarme) -> None:
         self.alarmes[alarme.id] = alarme
 
-    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime) -> int:
-        abertos = self._abertos(inquilino, regra, dispositivo)
+    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime, origem: str) -> int:
+        abertos = self._abertos(inquilino, regra, dispositivo, origem)
         for alarme in abertos:
             self.alarmes[alarme.id] = replace(alarme, estado=EstadoAlarme.RESOLVIDO, resolvido_em=quando)
         return len(abertos)
@@ -372,13 +372,13 @@ class AlarmesEmMemoria:
         ]
         return _paginar(encontrados, pagina, ordenacao)
 
-    def _abertos(self, inquilino: str, regra: str, dispositivo: str) -> list[Alarme]:
+    def _abertos(self, inquilino: str, regra: str, dispositivo: str, origem: str) -> list[Alarme]:
         return [
             alarme
             for alarme in self.alarmes.values()
             if (alarme.inquilino, alarme.regra, alarme.dispositivo) == (inquilino, regra, dispositivo)
             and alarme.estado is not EstadoAlarme.RESOLVIDO
-            and alarme.origem != "borda"
+            and alarme.origem == origem
         ]
 
 

@@ -363,7 +363,7 @@ def test_regras_estado_e_alarmes_no_banco(pool):
     assert alarmes.obter_alarme("coop-cerrado", "nao-e-uuid") is None
     alarmes.atualizar_alarme(replace(primeiro, estado=EstadoAlarme.RECONHECIDO, reconhecido_em=AGORA))
     assert alarmes.obter_alarme("coop-cerrado", primeiro.id).estado is EstadoAlarme.RECONHECIDO
-    assert alarmes.resolver_abertos("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", AGORA) == 1
+    assert alarmes.resolver_abertos("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", AGORA, "central") == 1
     abertos = alarmes.listar_alarmes(
         "coop-cerrado",
         {"estado": "ativo", "severidade": "critico"},

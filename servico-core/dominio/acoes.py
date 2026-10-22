@@ -198,3 +198,21 @@ def executores_da_borda(
     executores[TipoAcao.ALARME] = GerarAlarmeNaBorda(alarmes, fila, borda)
     executores[TipoAcao.COMANDO] = EnviarComandoNaBorda(catalogo, publicador, relogio, fila, borda)
     return executores
+
+
+def aviso_de_resolucao(fila: FilaDeSincronizacao, borda: str):
+    """Quando um alarme local se resolve na borda, a central fica sabendo pelo evento "alarme_resolvido"."""
+
+    def avisar(inquilino: str, regra: str, dispositivo: str, quando) -> None:
+        carga = {
+            "versao": "1.0",
+            "id_mensagem": str(uuid.uuid4()),
+            "dispositivo": dispositivo,
+            "tipo": "evento",
+            "timestamp": quando.isoformat().replace("+00:00", "Z"),
+            "via": borda,
+            "evento": {"nome": "alarme_resolvido", "detalhes": {"regra": regra}},
+        }
+        fila.enfileirar(carga, PRIORIDADE_EVENTO)
+
+    return avisar

@@ -30,7 +30,7 @@ from adaptadores.observabilidade import configurar_logs, observar_sincronizacao
 from adaptadores.relogio import RelogioDoSistema
 from adaptadores.rest.aplicacao import criar_app
 from configuracao import Configuracao
-from dominio.acoes import executores_da_borda, executores_padrao
+from dominio.acoes import aviso_de_resolucao, executores_da_borda, executores_padrao
 from dominio.alarmes import ServicoDeAlarmes
 from dominio.catalogo import ServicoDeCatalogo
 from dominio.consultas import ServicoDeConsultas
@@ -144,7 +144,13 @@ def montar_servico(config: Configuracao, *, cliente_da_central: ClienteDaCentral
         executores = executores_da_borda(**saidas, fila=fila, borda=config.borda_id)
     else:
         executores = executores_padrao(**saidas, origem=config.papel)
-    motor = MotorDeRegras(regras, alarmes, executores, ambito=config.papel)
+    motor = MotorDeRegras(
+        regras,
+        alarmes,
+        executores,
+        ambito=config.papel,
+        ao_resolver=aviso_de_resolucao(fila, config.borda_id) if borda else None,
+    )
     verificador = TarefaPeriodica(
         "verificacao-ausencia", config.verificacao_ausencia_s, lambda: motor.verificar_ausencias(relogio.agora())
     )

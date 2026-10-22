@@ -198,3 +198,18 @@ def test_cache_de_regras_e_esquecido_quando_uma_regra_muda(regras_env, relogio):
     regras_env.pipeline.processar(umidade(10), ORIGEM_SOLO)
     assert len(alarmes_de(regras_env)) == 1
     assert replace(alarmes_de(regras_env)[0], mensagem=None).regra == "umidade-baixa"
+
+
+def test_alarme_da_borda_e_resolvido_pelo_evento_alarme_resolvido(regras_env):
+    # A borda resolve o alarme local e avisa a central; o alarme da central (outra origem) não é afetado.
+    regras_env.regras.inserir_regra("coop-cerrado", regra("irrigacao-talhao07"))
+    regras_env.pipeline.processar(umidade(10), ORIGEM_SOLO)  # alarme de origem central
+    detalhes = {"regra": "irrigacao-talhao07"}
+    for nome, horario in (("alarme", "2026-10-19T04:00:00Z"), ("alarme_resolvido", "2026-10-19T04:30:00Z")):
+        evento = mensagem(tipo="evento", medidas=None, timestamp=horario, evento={"nome": nome, "detalhes": detalhes})
+        regras_env.pipeline.processar(evento, ORIGEM_BORDA)
+
+    por_origem = {alarme.origem: alarme for alarme in alarmes_de(regras_env)}
+    assert por_origem["borda"].estado is EstadoAlarme.RESOLVIDO
+    assert por_origem["borda"].resolvido_em.isoformat() == "2026-10-19T04:30:00+00:00"
+    assert por_origem["central"].estado is EstadoAlarme.ATIVO

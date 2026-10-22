@@ -158,12 +158,12 @@ class AlarmesPostgres:
                 (alarme.estado.value, alarme.reconhecido_em, alarme.resolvido_em, uuid.UUID(alarme.id)),
             )
 
-    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime) -> int:
+    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime, origem: str) -> int:
         with self._pool.connection() as conexao:
             return conexao.execute(
                 "UPDATE alarmes SET estado = 'resolvido', resolvido_em = %s WHERE inquilino_id = %s AND regra_id = %s"
-                " AND dispositivo_id = %s AND estado <> 'resolvido' AND origem <> 'borda'",
-                (quando, inquilino, regra, dispositivo),
+                " AND dispositivo_id = %s AND estado <> 'resolvido' AND origem = %s",
+                (quando, inquilino, regra, dispositivo, origem),
             ).rowcount
 
     def listar_alarmes(

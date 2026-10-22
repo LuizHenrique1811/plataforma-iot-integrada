@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.types.json import Jsonb
 
 PASTA_MIGRACOES = Path(__file__).parent / "migracoes"
@@ -62,18 +63,35 @@ def _registrar_tipos(modulo: Any) -> None:
     modulo.register_converter("UUID", lambda dados: dados.decode())
 
 
+@contextmanager
+def _como_no_postgres(erro_de_integridade: type[Exception]) -> Iterator[None]:
+    """Converte violações do SQLite nos erros do psycopg que os repositórios já tratam (ex.: JaExiste)."""
+    try:
+        yield
+    except erro_de_integridade as erro:
+        texto = str(erro)
+        if "UNIQUE" in texto or "PRIMARY KEY" in texto:
+            raise UniqueViolation(texto) from erro
+        if "FOREIGN KEY" in texto:
+            raise ForeignKeyViolation(texto) from erro
+        raise
+
+
 class _Conexao:
-    def __init__(self, bruta: Any) -> None:
+    def __init__(self, bruta: Any, erro_de_integridade: type[Exception]) -> None:
         self._bruta = bruta
+        self._erro_de_integridade = erro_de_integridade
 
     def execute(self, sql: str, parametros: Sequence[Any] = ()) -> Any:
-        if not parametros and sql.count(";") > 1:
-            self._bruta.executescript(traduzir(sql))
-            return self._bruta.cursor()
-        return self._bruta.execute(traduzir(sql), tuple(parametros))
+        with _como_no_postgres(self._erro_de_integridade):
+            if not parametros and sql.count(";") > 1:
+                self._bruta.executescript(traduzir(sql))
+                return self._bruta.cursor()
+            return self._bruta.execute(traduzir(sql), tuple(parametros))
 
     def executemany(self, sql: str, linhas: Sequence[Sequence[Any]]) -> Any:
-        return self._bruta.executemany(traduzir(sql), [tuple(linha) for linha in linhas])
+        with _como_no_postgres(self._erro_de_integridade):
+            return self._bruta.executemany(traduzir(sql), [tuple(linha) for linha in linhas])
 
     @contextmanager
     def transaction(self) -> Iterator[_Conexao]:
@@ -102,6 +120,7 @@ class PoolSqlite:
         _registrar_tipos(modulo)
         self.cifrado = chave_hex is not None
         self._trava = threading.RLock()
+        self._erro_de_integridade = modulo.IntegrityError
         self._bruta = modulo.connect(caminho, detect_types=modulo.PARSE_DECLTYPES, check_same_thread=False, timeout=30)
         if chave_hex:
             # Precisa ser a primeira instrução; com a chave errada, a próxima leitura falha.
@@ -114,7 +133,7 @@ class PoolSqlite:
     def connection(self) -> Iterator[_Conexao]:
         with self._trava:
             try:
-                yield _Conexao(self._bruta)
+                yield _Conexao(self._bruta, self._erro_de_integridade)
             except BaseException:
                 self._bruta.rollback()
                 raise

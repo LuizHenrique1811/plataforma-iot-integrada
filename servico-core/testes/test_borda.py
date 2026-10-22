@@ -131,3 +131,25 @@ def test_borda_sem_central_configurada_so_acumula(tmp_path):
         papel="borda", banco_url=f"sqlite:///{tmp_path / 'b.db'}", borda_id="b", contratos_dir=CONTRATOS
     )
     assert montar_servico(config).sincronizador is None
+
+
+def test_recurso_repetido_na_borda_responde_409(borda):
+    montar_catalogo(borda.cliente)
+    resposta = borda.cliente.post("/api/v1/inquilinos", json={"id": "coop-cerrado", "nome": "De novo"}, headers=ADMIN)
+    assert (resposta.status_code, resposta.json()["codigo"]) == (409, "ja_existe")
+
+
+def test_alarme_local_se_resolve_na_borda_e_avisa_a_central(borda, central):
+    token = {"Authorization": f"Bearer {montar_catalogo(borda.cliente)}"}
+    for valor in (14.0, 35.0):  # seca e depois volta a ter umidade
+        carga = mensagem(timestamp=None, medidas=[{"grandeza": "umidade_solo", "valor": valor}])
+        assert borda.cliente.post("/api/v1/ingestao", json=carga, headers=token).status_code == 202
+
+    [alarme] = borda.cliente.get("/api/v1/alarmes", headers=ADMIN).json()["itens"]
+    assert alarme["estado"] == "resolvido"
+    borda.sincronizador.sincronizar()
+    eventos = [carga["evento"]["nome"] for carga in central.gravadas.values() if carga["tipo"] == "evento"]
+    assert eventos == ["alarme", "comando_enviado", "alarme_resolvido"]
+    resolvido = next(c for c in central.gravadas.values() if c.get("evento", {}).get("nome") == "alarme_resolvido")
+    assert ValidadorJsonSchema(CONTRATOS).validar(resolvido) == []
+    assert resolvido["evento"]["detalhes"] == {"regra": "irrigacao-talhao07"}

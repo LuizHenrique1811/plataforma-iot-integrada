@@ -95,7 +95,7 @@ def test_listagem_com_filtros_e_mais_recentes_primeiro(servico, alarmes):
 def test_um_alarme_aberto_por_regra_e_dispositivo(alarmes):
     assert alarmes.inserir_alarme(novo_alarme("a1")) is True
     assert alarmes.inserir_alarme(novo_alarme("a2")) is False
-    assert alarmes.resolver_abertos("coop-cerrado", "r1", "silo-02", AGORA) == 1
+    assert alarmes.resolver_abertos("coop-cerrado", "r1", "silo-02", AGORA, "central") == 1
     assert alarmes.inserir_alarme(novo_alarme("a3")) is True
 
 

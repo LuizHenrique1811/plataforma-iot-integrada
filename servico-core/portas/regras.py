@@ -37,14 +37,16 @@ class RepositorioDeRegras(Protocol):
 
 class RepositorioDeAlarmes(Protocol):
     def inserir_alarme(self, alarme: Alarme) -> bool:
-        """Grava o alarme; devolve False se já existe um alarme aberto da mesma regra e dispositivo."""
+        """Grava o alarme; devolve False se já há um aberto da mesma regra, dispositivo e origem."""
         ...
 
     def obter_alarme(self, inquilino: str, alarme: str) -> Alarme | None: ...
 
     def atualizar_alarme(self, alarme: Alarme) -> None: ...
 
-    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime) -> int: ...
+    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime, origem: str) -> int:
+        """Resolve os alarmes abertos da regra para o dispositivo gerados pela origem (central ou borda)."""
+        ...
 
     def listar_alarmes(
         self, inquilino: str, filtros: dict[str, Any], pagina: ParametrosDePagina, ordenacao: Ordenacao

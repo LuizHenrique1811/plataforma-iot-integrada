@@ -16,6 +16,7 @@ from adaptadores.postgres.repositorios import (
     FilaDeRejeitadasPostgres,
 )
 from adaptadores.sqlite.conexao import (
+    PASTA_MIGRACOES,
     PoolSqlite,
     abrir,
     aplicar_migracoes,
@@ -122,7 +123,7 @@ def test_disco_retirado_nao_revela_os_dados(tmp_path, arquivo_de_chave, pool, pi
 def test_sem_chave_a_fila_fica_em_claro(tmp_path):
     pool = abrir(f"sqlite:///{tmp_path / 'aberta.db'}")
     assert pool.cifrado is False
-    assert aplicar_migracoes(pool) == ["001_borda.sql"]
+    assert aplicar_migracoes(pool) == [arquivo.name for arquivo in sorted(PASTA_MIGRACOES.glob("*.sql"))]
     assert aplicar_migracoes(pool) == []
     pool.close()
 
@@ -220,6 +221,22 @@ def test_regras_estado_e_alarmes_na_borda(pool, token):
     assert alarmes.inserir_alarme(alarme) is True
     assert alarmes.inserir_alarme(Alarme(str(uuid.uuid4()), *list(vars(alarme).values())[1:])) is False
     assert alarmes.obter_alarme("coop-cerrado", alarme.id).severidade is Severidade.CRITICO
-    assert alarmes.resolver_abertos("coop-cerrado", "irrigacao", "solo-01", AGORA) == 1
+    assert alarmes.resolver_abertos("coop-cerrado", "irrigacao", "solo-01", AGORA, "central") == 1
     listados = alarmes.listar_alarmes("coop-cerrado", {"estado": "resolvido"}, PAGINA, Ordenacao("ocorrido_em"))
     assert listados.itens[0].resolvido_em == AGORA
+
+
+def test_identificador_repetido_vira_ja_existe_na_borda(pool, token):
+    # Mesmo comportamento da central: o repositório traduz a violação de unicidade em JaExiste (409 na API).
+    from dominio.erros import JaExiste
+
+    servico = ServicoDeCatalogo(CatalogoPostgres(pool), GeradorDeCredenciaisSeguro(), RelogioFixo(AGORA))
+    administrador = Origem(TipoOrigem.CHAVE, None, papel="administrador")
+    with pytest.raises(JaExiste):
+        servico.criar_inquilino(administrador, Inquilino("coop-cerrado", "De novo"))
+    with pytest.raises(JaExiste):
+        servico.criar_dominio(ADMIN, Dominio("agricultura", "De novo"))
+    regras = RegrasPostgres(pool)
+    regras.inserir_regra("coop-cerrado", regra("dupla"))
+    with pytest.raises(JaExiste):
+        regras.inserir_regra("coop-cerrado", regra("dupla"))
