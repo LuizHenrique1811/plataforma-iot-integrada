@@ -1,0 +1,19 @@
+# Teste de carga contra a central no ar (RNF-01, RNF-02). Lê CHAVE_ADMIN e POSTGRES_* de infra/central/.env.
+#   docker compose -f testes-sistema/carga/compose.yaml run --rm --build carga
+# Parâmetros opcionais: TAXA (msg/s, padrão 1000), DURACAO_S (padrão 60), DISPOSITIVOS (padrão 100).
+name: iot-carga
+
+services:
+  carga:
+    build: .
+    working_dir: /repo/testes-sistema/carga
+    volumes:
+      - ../..:/repo
+    environment:
+      PYTHONUNBUFFERED: "1"
+      TAXA: ${TAXA:-1000}
+      DURACAO_S: ${DURACAO_S:-60}
+      DISPOSITIVOS: ${DISPOSITIVOS:-100}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "carga.py"]
