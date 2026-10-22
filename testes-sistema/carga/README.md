@@ -45,6 +45,8 @@ docker compose -f infra/central/compose.yaml --profile escala stop
 - **Máquina:** notebook com Intel Core Ultra 5 125H e 15,5 GB de RAM, Windows 11 com Docker Desktop (WSL2), 18 CPUs virtuais e 7,5 GB para os contêineres.
 - **Tudo no mesmo servidor**, que é o próprio notebook: Mosquitto, TimescaleDB, o gerador de carga e 10 processos do `servico-core`, cada um com 3 threads de ingestão e um MQTT_CLIENTE próprio.
 - **Divisão das mensagens:** os processos compartilham a assinatura `$share/ingestao/...`.
+- **Banco:** os processos falam com o PostgreSQL pelo socket Unix, num volume compartilhado. As primeiras medições da tabela abaixo usaram TCP pela rede do Docker.
+- **Carga do notebook:** o notebook também rodava navegador, Docker Desktop e outros aplicativos, e isso muda o resultado (ver as medições do ensaio).
 
 ## Resultados
 
@@ -58,7 +60,15 @@ docker compose -f infra/central/compose.yaml --profile escala stop
 | **10 processos, 3 threads** | **1.000 msg/s** | **0,09 s a 0,40 s** | **aprovado** |
 | 10 processos, 3 threads, a 1.200 msg/s | cerca de 1.050 msg/s | crescente | teto da máquina |
 
-Na configuração aprovada, sem perdas nem duplicatas, a regra disparou com p95 de 0,40 s. Dentro do serviço, do recebimento à gravação, o p95 é de 26 ms; o resto é espera na fila do broker. Cada processo ocupa cerca de 70 MB.
+Medições do ensaio da demonstração do zero, num clone novo, com o notebook mais carregado (cerca de 68% de CPU do Windows fora do Docker):
+
+| Configuração | Vazão sustentada | p95 envio → persistência | Situação |
+|---|---|---|---|
+| 10 processos, banco por TCP | 884 e 903 msg/s (duas execuções) | 7,7 s e 6,2 s | reprovado |
+| **10 processos, banco por socket Unix** | **997 msg/s** | **0,53 s** | **aprovado** |
+| 10 processos, socket Unix, a 1.200 msg/s | cerca de 1.020 msg/s | crescente | teto da máquina nesse estado |
+
+Na configuração aprovada, sem perdas nem duplicatas, a regra disparou com p95 de 0,40 s (0,60 s no ensaio). Dentro do serviço, do recebimento à gravação, o p95 fica entre 15 e 30 ms; o resto é espera na fila do broker. Cada processo ocupa cerca de 70 MB. O [resultado.md](resultado.md) guarda a última execução registrada.
 
 ## O que a medição mostrou
 
@@ -69,10 +79,11 @@ Na configuração aprovada, sem perdas nem duplicatas, a regra disparou com p95 
    - cache dos perfis, que não mudam depois de criados.
 
    O modo pipeline do psycopg na gravação junta os comandos da transação, mas o ganho ficou dentro da variação da medição.
-4. **Escala horizontal funciona como previsto (RNF-09).** Os processos não guardam estado e dividem a assinatura MQTT. Somar processos aumentou a vazão quase em proporção, até o teto de cerca de 1.050 msg/s desta máquina.
+4. **Socket Unix em vez de TCP.** Banco e processos estão no mesmo servidor, então a conexão pelo socket Unix evita a pilha de rede do Docker. Nas mesmas condições, a vazão subiu de cerca de 890 para cerca de 1.000 msg/s (+13% a 15%).
+5. **Escala horizontal funciona como previsto (RNF-09).** Os processos não guardam estado e dividem a assinatura MQTT. Somar processos aumentou a vazão quase em proporção, até o teto da máquina: de 1.020 a 1.050 msg/s, conforme a carga do notebook.
 
 ## Limitações e próximos passos
 
-- **Margem pequena.** O teto de 1.050 msg/s deixa só cerca de 5% de folga sobre a meta. Num servidor dedicado, sem o Windows e o Docker Desktop no meio, a folga tende a ser maior, mas isso não foi medido.
+- **Margem pequena.** O teto de 1.020 a 1.050 msg/s deixa de 2% a 5% de folga sobre a meta, e o resultado depende do que mais roda no notebook. Para a demonstração ao vivo, é mais seguro mostrar o resultado registrado ou rodar numa taxa menor (por exemplo, `TAXA=600`). Num servidor dedicado, sem o Windows e o Docker Desktop no meio, a folga tende a ser maior, mas isso não foi medido.
 - **10.000 msg/s (segunda meta do RNF-01) só documentado.** No ritmo atual, de cerca de 100 msg/s por processo, seriam necessários uns 100 processos. O próximo passo é gravar em micro-lotes, com uma transação e um `executemany` para dezenas de mensagens, como o `/api/v1/ingestao/lote` já permite receber. Junto com mais servidores e mais réplicas do banco, isso reduz o custo por mensagem.
 - **Medido por MQTT.** A ingestão por HTTP passa pelo mesmo pipeline, mas não foi medida sob carga.

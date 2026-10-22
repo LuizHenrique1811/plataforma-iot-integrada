@@ -229,13 +229,16 @@ As migrações são SQL puro, aplicadas na inicialização, com uma pasta por am
 
 O teste de carga ([`testes-sistema/carga`](../testes-sistema/carga/README.md), [ADR-0022](adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)) comprovou 1.000 msg/s por MQTT no notebook da apresentação, sem perdas nem duplicatas:
 
-- p95 de 0,09 s a 0,40 s até a persistência;
-- p95 de 0,40 s até o disparo da regra;
-- 10 processos do `servico-core` num grupo de assinatura compartilhada.
+- p95 de 0,09 s a 0,53 s até a persistência;
+- p95 de 0,40 s a 0,60 s até o disparo da regra;
+- 10 processos do `servico-core` num grupo de assinatura compartilhada, falando com o PostgreSQL pelo socket Unix.
+
+O teto da máquina vai de 1.020 a 1.050 msg/s, conforme o que mais roda no notebook, então a folga é pequena.
 
 O que a medição mostrou:
 
 - **Um processo Python sustenta cerca de 100 a 150 msg/s**, limitado pela CPU e pelas idas e voltas ao banco. O banco tinha folga.
+- **O socket Unix rende 13% a 15% mais que TCP**, porque metade da CPU ia para a pilha de rede.
 - **A escala é horizontal (RNF-09).** Os processos não guardam estado; as réplicas usam sessão MQTT limpa e só o processo principal verifica ausências.
 - **As 10.000 msg/s ficam documentadas:** o próximo passo é gravar em micro-lotes, com uma transação para dezenas de mensagens.
 

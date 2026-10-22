@@ -30,6 +30,7 @@ O núcleo já foi pensado para escalar na horizontal (RNF-09): os processos não
    - conexões do pool em autocommit: consulta avulsa sem transação nem COMMIT extra; as gravações compostas usam `transaction()`;
    - cache, no pipeline, dos perfis de dispositivo, que não mudam depois de criados (o contrato não tem rota para alterá-los);
    - modo pipeline do psycopg na gravação. O SQLite da borda aceita a mesma chamada e não faz nada com ela.
+6. **PostgreSQL pelo socket Unix.** O banco e os processos estão no mesmo servidor, então os processos montam o diretório do socket num volume compartilhado e usam `BANCO_URL=...@/iot?host=/var/run/postgresql`. Medido no ensaio, nas mesmas condições: a vazão foi de cerca de 890 msg/s por TCP para cerca de 1.000 msg/s pelo socket. O Grafana continua por TCP.
 
 ## Alternativas consideradas
 
@@ -41,7 +42,9 @@ O núcleo já foi pensado para escalar na horizontal (RNF-09): os processos não
 ## Consequências
 
 - **RNF-01 cumprido nesta máquina:** 1.000 msg/s sustentadas com 10 processos, sem perdas nem duplicatas, com p95 de 0,09 s a 0,40 s até a persistência e de 0,40 s até o disparo da regra.
-  - A folga é pequena: o teto medido é de cerca de 1.050 msg/s.
+  - A folga é pequena: o teto medido vai de 1.020 a 1.050 msg/s, conforme o que mais roda no notebook. Com o notebook carregado e o banco por TCP, duas execuções ficaram em 884 e 903 msg/s.
+- **Socket local sem senha.** A imagem do TimescaleDB aceita conexões pelo socket com a regra `trust` do `pg_hba.conf`. Só os contêineres que montam o volume do socket chegam a ele, e são os do `servico-core`. Num ambiente real, a regra local deve exigir senha (`POSTGRES_INITDB_ARGS=--auth-local=scram-sha-256`).
+- **Banco e processos no mesmo servidor.** Para separar o banco em outra máquina, basta voltar o `BANCO_URL` para TCP, com a perda de desempenho medida.
 - **Uma réplica que cai sem parar direito** (queda do processo, não `docker compose stop`) perde as mensagens que já tinha recebido e ainda não tinha confirmado: no máximo a janela de envio do broker, 20 mensagens por réplica. O principal, com sessão persistente, não tem essa perda. É uma exceção ao RNF-10 restrita às réplicas de carga.
 - **Ordem:** mensagens de um mesmo dispositivo podem ser processadas fora de ordem entre processos, como já acontecia entre threads. O armazenamento ordena pelo horário da medição e o último estado só avança com medição mais nova, então o resultado não muda.
 - **10.000 msg/s ficam documentadas:** exigem micro-lotes, mais servidores e réplicas do banco.
