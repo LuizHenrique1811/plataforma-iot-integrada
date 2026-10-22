@@ -28,6 +28,7 @@ _MENSAGENS = {
     Motivo.TIPO_NAO_ACEITO: "Esse tipo de mensagem não é aceito na ingestão.",
     Motivo.GRANDEZA_FORA_DO_PERFIL: "Grandeza não definida no perfil do dispositivo.",
     Motivo.UNIDADE_INCOMPATIVEL: "Unidade sem conversão para a unidade do perfil.",
+    Motivo.TOPICO_DIVERGENTE: "O tópico MQTT não corresponde à mensagem ou ao dispositivo.",
 }
 
 

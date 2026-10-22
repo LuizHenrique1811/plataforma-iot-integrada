@@ -132,7 +132,7 @@ def test_lote_que_nao_e_json_retorna_400(cliente):
 
 
 def test_saude(cliente):
-    assert cliente.get("/saude").json() == {"situacao": "ok", "papel": "central", "versao": "0.1.0"}
+    assert cliente.get("/saude").json() == {"situacao": "ok", "papel": "central", "versao": "0.2.0"}
 
 
 def test_contratos_publicados_e_documentacao_interativa(cliente):

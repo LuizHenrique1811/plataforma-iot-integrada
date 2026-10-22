@@ -54,6 +54,12 @@ def pool():
             " 'talhao-07', %s) ON CONFLICT DO NOTHING",
             (hash_segredo("token-solo"),),
         )
+        # Dispositivo só do teste de último estado, para não depender do que outros testes gravaram.
+        conexao.execute(
+            "INSERT INTO dispositivos (inquilino_id, id, perfil_id, dominio_id, site_id)"
+            " VALUES ('coop-cerrado', 'estado-01', 'sensor-solo', 'agricultura', 'fazenda-boa-vista')"
+            " ON CONFLICT DO NOTHING"
+        )
         conexao.execute(
             "INSERT INTO chaves_api (id, inquilino_id, papel, hash) VALUES ('borda-1', 'coop-cerrado', 'no_borda', %s)"
             " ON CONFLICT DO NOTHING",
@@ -124,18 +130,17 @@ def test_corrida_entre_reenvios_grava_uma_vez(pool, pipeline_pg):
 
 def test_ultimo_estado_nao_regride_com_dado_atrasado(pool, pipeline_pg):
     # ADR-0017: o upsert só troca o valor quando a medição é mais nova.
-    pipeline_pg.processar(
-        mensagem(timestamp="2026-10-19T05:12:00Z", medidas=[{"grandeza": "umidade_solo", "valor": 31.0}]),
-        ORIGEM_BORDA,
-    )
-    pipeline_pg.processar(
-        mensagem(timestamp="2026-10-18T05:12:00Z", medidas=[{"grandeza": "umidade_solo", "valor": 5.0}]),
-        ORIGEM_BORDA,
-    )
+    for timestamp, valor in (("2026-10-19T05:12:00Z", 31.0), ("2026-10-18T05:12:00Z", 5.0)):
+        pipeline_pg.processar(
+            mensagem(
+                dispositivo="estado-01", timestamp=timestamp, medidas=[{"grandeza": "umidade_solo", "valor": valor}]
+            ),
+            ORIGEM_BORDA,
+        )
     estado = consultar(
         pool,
         "SELECT valor, medido_em FROM ultimo_estado WHERE inquilino_id = 'coop-cerrado'"
-        " AND dispositivo_id = 'solo-talhao07-02' AND grandeza = 'umidade_solo'",
+        " AND dispositivo_id = 'estado-01' AND grandeza = 'umidade_solo'",
     )
     assert estado == [(31.0, datetime(2026, 10, 19, 5, 12, tzinfo=UTC))]
 
@@ -212,3 +217,101 @@ def test_dispositivo_revogado_perde_o_token(pool):
     dispositivo = CatalogoPostgres(pool).obter_dispositivo("coop-cerrado", "revogado-01")
     assert dispositivo.revogado_em is not None
     assert replace(dispositivo, revogado_em=None).id == "revogado-01"
+
+
+def test_contato_da_borda_e_situacao_desconhecida(pool, pipeline_pg):
+    # ADR-0010 com o banco real: dispositivo atrás de borda sem sincronizar fica "desconhecido".
+    from adaptadores.postgres.repositorios import ConsultasPostgres
+    from dominio.consultas import ServicoDeConsultas, SituacaoDispositivo
+    from dominio.modelos import Origem
+
+    pipeline_pg.processar(mensagem(timestamp="2026-10-19T05:14:00Z", via="borda-fazenda-boa-vista"), ORIGEM_BORDA)
+    consultas = ConsultasPostgres(pool)
+    assert consultas.contato_da_borda("coop-cerrado", "borda-fazenda-boa-vista") == AGORA
+    relogio = RelogioFixo(datetime(2026, 10, 19, 12, 0, tzinfo=UTC))
+    servico = ServicoDeConsultas(consultas, CatalogoPostgres(pool), relogio)
+    leitor = Origem(TipoOrigem.CHAVE, "coop-cerrado", papel="leitor")
+    assert servico.estado(leitor, "solo-talhao07-02").situacao is SituacaoDispositivo.DESCONHECIDO
+
+
+def test_fluxo_completo_pela_api_com_o_banco(pool):
+    # Raiz de composição com PostgreSQL: cadastro, ingestão, consultas e revogação.
+    from fastapi.testclient import TestClient
+
+    from apoio import CONTRATOS
+    from configuracao import Configuracao
+    from principal import criar_aplicacao
+
+    inquilino = f"inq-{uuid.uuid4().hex[:8]}"
+    admin = {"X-Chave-API": "admin-pg", "X-Inquilino": inquilino}
+    config = Configuracao(banco_url=URL, contratos_dir=CONTRATOS, chave_admin="admin-pg")
+    with TestClient(criar_aplicacao(config)) as cliente:
+        assert (
+            cliente.post("/api/v1/inquilinos", json={"id": inquilino, "nome": "Teste"}, headers=admin).status_code
+            == 201
+        )
+        gestor = {
+            "X-Chave-API": cliente.post("/api/v1/chaves", json={"papel": "gestor"}, headers=admin).json()["chave"]
+        }
+        for caminho, corpo in (
+            ("/api/v1/catalogo/dominios", {"id": "ambiente", "nome": "Meio ambiente"}),
+            (
+                "/api/v1/catalogo/perfis",
+                {
+                    "id": "estacao-ar",
+                    "nome": "Estação",
+                    "intervalo_envio_s": 60,
+                    "grandezas": [{"grandeza": "pm25", "unidade": "ug/m3", "maximo": 500}],
+                },
+            ),
+            (
+                "/api/v1/sites",
+                {"id": "centro", "nome": "Centro", "geo": {"type": "Point", "coordinates": [-49.0, -16.0]}},
+            ),
+            ("/api/v1/sites/centro/areas", {"id": "praca", "nome": "Praça"}),
+        ):
+            resposta = cliente.post(caminho, json=corpo, headers=gestor)
+            assert resposta.status_code == 201, resposta.text
+        assert (
+            cliente.post("/api/v1/catalogo/dominios", json={"id": "ambiente", "nome": "X"}, headers=gestor).status_code
+            == 409
+        )
+        resposta = cliente.post(
+            "/api/v1/dispositivos",
+            json={
+                "id": "ar-01",
+                "perfil": "estacao-ar",
+                "dominio": "ambiente",
+                "site": "centro",
+                "area": "praca",
+                "fabricante": "Acme",
+                "firmware": "1.2.0",
+            },
+            headers=gestor,
+        )
+        assert resposta.status_code == 201, resposta.text
+        token = {"Authorization": f"Bearer {resposta.json()['token']}"}
+
+        carga = mensagem(dispositivo="ar-01", timestamp=None, medidas=[{"grandeza": "pm25", "valor": 600}])
+        assert cliente.post("/api/v1/ingestao", json=carga, headers=token).status_code == 202
+        telemetria = cliente.get("/api/v1/dispositivos/ar-01/telemetria", headers=gestor).json()
+        assert telemetria["total"] == 1
+        assert telemetria["itens"][0]["suspeita"] is True
+        estado = cliente.get("/api/v1/dispositivos/ar-01/estado", headers=gestor).json()
+        assert estado["situacao"] == "online"
+        detalhe = cliente.get("/api/v1/dispositivos/ar-01", headers=gestor).json()
+        assert (detalhe["fabricante"], detalhe["firmware"], detalhe["area"]) == ("Acme", "1.2.0", "praca")
+        sites = cliente.get("/api/v1/sites?ordenar=-nome", headers=gestor).json()
+        assert sites["itens"][0]["geo"]["type"] == "Point"
+        assert cliente.get("/api/v1/dispositivos?area=praca&tamanho=1", headers=gestor).json()["total"] == 1
+        assert (
+            cliente.get("/api/v1/catalogo/perfis", headers=gestor).json()["itens"][0]["grandezas"][0]["maximo"] == 500
+        )
+
+        cliente.post("/api/v1/ingestao", json=mensagem(dispositivo="ar-01", id_mensagem="ruim"), headers=token)
+        rejeitadas = cliente.get("/api/v1/rejeitadas", headers=gestor).json()
+        assert rejeitadas["itens"][0]["carga"]["id_mensagem"] == "ruim"
+
+        assert cliente.delete("/api/v1/dispositivos/ar-01/credencial", headers=gestor).status_code == 204
+        assert cliente.post("/api/v1/ingestao", json=mensagem(dispositivo="ar-01"), headers=token).status_code == 401
+        assert cliente.get("/api/v1/dispositivos/ar-01", headers=gestor).json()["revogado_em"] is not None

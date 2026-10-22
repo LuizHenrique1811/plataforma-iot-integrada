@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft7Validator
+from jsonschema.protocols import Validator
 
 from dominio.modelos import ErroDeCampo
 
@@ -28,10 +29,10 @@ class ValidadorJsonSchema:
         return frozenset(self._por_versao)
 
     def validar(self, carga: dict[str, Any]) -> list[ErroDeCampo]:
-        return _erros(self._por_versao[carga["versao"]], carga)
+        return erros_de_validacao(self._por_versao[carga["versao"]], carga)
 
     def validar_lote(self, carga: Any) -> list[ErroDeCampo]:
-        return _erros(self._lote, carga)
+        return erros_de_validacao(self._lote, carga)
 
 
 def _compilar(caminho: Path) -> Draft7Validator:
@@ -40,7 +41,7 @@ def _compilar(caminho: Path) -> Draft7Validator:
     return Draft7Validator(schema, format_checker=Draft7Validator.FORMAT_CHECKER)
 
 
-def _erros(validador: Draft7Validator, carga: Any) -> list[ErroDeCampo]:
+def erros_de_validacao(validador: Validator, carga: Any) -> list[ErroDeCampo]:
     erros = sorted(validador.iter_errors(carga), key=lambda erro: [str(parte) for parte in erro.absolute_path])
     return [ErroDeCampo(_ponteiro(erro.absolute_path), erro.message) for erro in erros]
 

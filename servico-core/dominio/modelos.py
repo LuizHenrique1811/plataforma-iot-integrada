@@ -29,15 +29,17 @@ class Origem:
     inquilino: str | None
     dispositivo: str | None = None
     papel: str | None = None
+    # Só no MQTT: níveis do tópico {inquilino}/{site}/{dominio}/{dispositivo}/{canal} (asyncapi.yaml).
+    site: str | None = None
+    dominio: str | None = None
+    canal: str | None = None
 
     def descricao(self) -> str:
         partes = [self.tipo.value]
-        if self.inquilino:
-            partes.append(f"inquilino={self.inquilino}")
-        if self.dispositivo:
-            partes.append(f"dispositivo={self.dispositivo}")
-        if self.papel:
-            partes.append(f"papel={self.papel}")
+        for campo in ("inquilino", "site", "dominio", "dispositivo", "canal", "papel"):
+            valor = getattr(self, campo)
+            if valor:
+                partes.append(f"{campo}={valor}")
         return " ".join(partes)
 
 
@@ -71,6 +73,9 @@ class DispositivoCadastrado:
     site: str
     area: str | None = None
     revogado_em: datetime | None = None
+    fabricante: str | None = None
+    firmware: str | None = None
+    criado_em: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +135,7 @@ class Motivo(StrEnum):
     VERSAO_NAO_SUPORTADA = "versao_nao_suportada"
     ORIGEM_NAO_AUTORIZADA = "origem_nao_autorizada"
     DISPOSITIVO_DIVERGENTE = "dispositivo_divergente"
+    TOPICO_DIVERGENTE = "topico_divergente"
     DISPOSITIVO_DESCONHECIDO = "dispositivo_desconhecido"
     PERFIL_DESCONHECIDO = "perfil_desconhecido"
     CREDENCIAL_REVOGADA = "credencial_revogada"

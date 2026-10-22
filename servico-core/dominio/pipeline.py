@@ -135,6 +135,13 @@ class PipelineDeIngestao:
                 Motivo.DISPOSITIVO_DIVERGENTE,
                 [ErroDeCampo("/dispositivo", f"a credencial é do dispositivo {origem.dispositivo!r}")],
             )
+        if origem.canal is not None and origem.canal != ctx.carga["tipo"]:
+            return self._rejeitar(
+                ctx,
+                Etapa.AUTORIZACAO,
+                Motivo.TOPICO_DIVERGENTE,
+                [ErroDeCampo("/tipo", f"mensagem do tipo {ctx.carga['tipo']!r} publicada no tópico {origem.canal!r}")],
+            )
         return None
 
     def _deduplicar(self, ctx: _Contexto) -> ResultadoIngestao | None:
@@ -156,6 +163,21 @@ class PipelineDeIngestao:
                 [ErroDeCampo("/dispositivo", "dispositivo não cadastrado no inquilino")],
             )
         ctx.dispositivo = dispositivo
+        # No MQTT, o tópico precisa ser o do dispositivo (simplificação do RF-SEG-04, ADR-0018).
+        origem = ctx.origem
+        if origem.site is not None and (origem.site, origem.dominio) != (dispositivo.site, dispositivo.dominio):
+            return self._rejeitar(
+                ctx,
+                Etapa.AUTORIZACAO,
+                Motivo.TOPICO_DIVERGENTE,
+                [
+                    ErroDeCampo(
+                        "",
+                        f"o dispositivo publica em {dispositivo.site}/{dispositivo.dominio}, "
+                        f"não em {origem.site}/{origem.dominio}",
+                    )
+                ],
+            )
 
         timestamp, origem_timestamp = self._carimbar(
             carga.get("timestamp"), carga.get("origem_timestamp"), ctx.recebido_em

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,12 @@ class Configuracao:
     chave_admin: str | None = None
     limite_dado_atual_s: int = 300
     log_nivel: str = "INFO"
+    # mqtt://[usuario:senha@]host:porta; vazio desliga o consumidor MQTT.
+    mqtt_url: str | None = None
+    mqtt_cliente: str = "servico-core"
+    # Nome do grupo de assinatura compartilhada, para dividir a carga entre réplicas; vazio desliga.
+    mqtt_grupo: str | None = None
+    mqtt_trabalhadores: int = 8
 
     @classmethod
     def do_ambiente(cls, ambiente: Mapping[str, str] = os.environ) -> Configuracao:
@@ -33,6 +40,10 @@ class Configuracao:
             chave_admin=ambiente.get("CHAVE_ADMIN") or None,
             limite_dado_atual_s=int(ambiente.get("LIMITE_DADO_ATUAL_S", "300")),
             log_nivel=ambiente.get("LOG_NIVEL", "INFO"),
+            mqtt_url=ambiente.get("MQTT_URL") or None,
+            mqtt_cliente=ambiente.get("MQTT_CLIENTE") or f"servico-core-{papel}-{socket.gethostname()}",
+            mqtt_grupo=ambiente.get("MQTT_GRUPO") or None,
+            mqtt_trabalhadores=int(ambiente.get("MQTT_TRABALHADORES", "8")),
         )
 
 

@@ -1,4 +1,4 @@
-# Testes do servico-core com um TimescaleDB descartável.
+# Testes do servico-core com um TimescaleDB e um Mosquitto descartáveis.
 #   docker compose -f servico-core/compose.testes.yaml run --rm --build testes
 # A senha abaixo só existe neste banco de teste, sem dados reais.
 name: iot-testes
@@ -18,6 +18,11 @@ services:
       timeout: 3s
       retries: 30
 
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    # Configuração sem autenticação que vem na imagem oficial; só para teste.
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+
   testes:
     build:
       context: ..
@@ -25,9 +30,12 @@ services:
       target: testes
     environment:
       BANCO_URL_TESTE: postgresql://teste:teste@timescaledb:5432/teste
+      MQTT_URL_TESTE: mqtt://mosquitto:1883
     depends_on:
       timescaledb:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     # Código montado por cima da imagem para rodar a versão atual sem rebuild.
     volumes:
       - ./:/app

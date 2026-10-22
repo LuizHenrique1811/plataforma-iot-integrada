@@ -11,3 +11,14 @@ def gerar_segredo() -> str:
 def hash_segredo(segredo: str) -> str:
     # Segredos aleatórios de 256 bits dispensam um hash lento como bcrypt.
     return hashlib.sha256(segredo.encode("utf-8")).hexdigest()
+
+
+class GeradorDeCredenciaisSeguro:
+    def novo_segredo(self) -> str:
+        return gerar_segredo()
+
+    def novo_id(self) -> str:
+        return secrets.token_hex(8)
+
+    def hash(self, segredo: str) -> str:
+        return hash_segredo(segredo)
