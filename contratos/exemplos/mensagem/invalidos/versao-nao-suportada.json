@@ -1,0 +1,1 @@
+{ "versao": "2.0", "id_mensagem": "0f3c2a71-9e4b-4d6a-8b1f-2c5e7a9d0b13", "dispositivo": "ar-centro-03", "tipo": "telemetria", "timestamp": "2026-10-19T14:00:00Z", "medidas": [ { "grandeza": "pm25", "valor": 18.2 } ] }

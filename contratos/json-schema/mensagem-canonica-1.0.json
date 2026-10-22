@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mensagem canônica",
+  "description": "Formato único e versionado em que telemetria, eventos, estado e comandos circulam na plataforma (seção 4.4 do documento de requisitos). Escrito em JSON Schema draft-07, sem recursos exclusivos de versões posteriores, para funcionar nos validadores mais comuns de qualquer linguagem (RNF-13).",
+  "type": "object",
+  "required": ["versao", "id_mensagem", "dispositivo", "tipo"],
+  "additionalProperties": false,
+  "properties": {
+    "versao": {
+      "description": "Versão do contrato. A plataforma valida cada mensagem contra o schema da versão declarada (RF-ING-06).",
+      "const": "1.0"
+    },
+    "id_mensagem": {
+      "description": "UUID gerado na origem. Usado para descartar duplicatas, inclusive na sincronização da borda (RF-ING-08). O padrão é explícito porque o formato uuid não existe no draft-07.",
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "dispositivo": {
+      "description": "Identificador do dispositivo no catálogo do inquilino.",
+      "$ref": "#/definitions/identificador"
+    },
+    "tipo": {
+      "description": "Natureza da mensagem. Cada tipo corresponde a um tópico MQTT (asyncapi.yaml).",
+      "enum": ["telemetria", "evento", "estado", "comando"]
+    },
+    "timestamp": {
+      "description": "Momento da medição, em UTC (ISO 8601). A plataforma ordena pelo horário da medição, não pela chegada. Se ausente ou implausível, o nó que recebe a mensagem (borda ou central) grava a hora de recepção e preenche origem_timestamp com \"recepcao\".",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|[+-]00:00)$"
+    },
+    "origem_timestamp": {
+      "description": "Preenchido pela plataforma: \"dispositivo\" quando o timestamp veio da origem, \"recepcao\" quando foi carimbado na chegada (ADR-0009). Campo opcional, sem efeito para quem não o envia.",
+      "enum": ["dispositivo", "recepcao"]
+    },
+    "via": {
+      "description": "Opcional: nó de borda ou gateway pelo qual a mensagem passou (rastreabilidade).",
+      "$ref": "#/definitions/identificador"
+    },
+    "local": {
+      "description": "Site, área e geometria do ponto de medição. Se omitido, vale o local cadastrado do dispositivo.",
+      "$ref": "#/definitions/local"
+    },
+    "medidas": {
+      "description": "Grandezas do catálogo, com unidades no código UCUM (ex.: Cel, %, ug/m3). Obrigatório quando tipo = telemetria.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/definitions/medida" }
+    },
+    "evento": {
+      "description": "Obrigatório quando tipo = evento: alarme, acionamento ou outra ocorrência, inclusive as geradas por regras locais da borda.",
+      "$ref": "#/definitions/evento"
+    },
+    "estado": {
+      "description": "Obrigatório quando tipo = estado: estado relatado pelo dispositivo (gêmeo).",
+      "type": "object"
+    },
+    "comando": {
+      "description": "Obrigatório quando tipo = comando: comando enviado pela plataforma ao dispositivo.",
+      "$ref": "#/definitions/comando"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "tipo": { "const": "telemetria" } }, "required": ["tipo"] },
+      "then": { "required": ["medidas"] }
+    },
+    {
+      "if": { "properties": { "tipo": { "const": "evento" } }, "required": ["tipo"] },
+      "then": { "required": ["evento"] }
+    },
+    {
+      "if": { "properties": { "tipo": { "const": "estado" } }, "required": ["tipo"] },
+      "then": { "required": ["estado"] }
+    },
+    {
+      "if": { "properties": { "tipo": { "const": "comando" } }, "required": ["tipo"] },
+      "then": { "required": ["comando"] }
+    }
+  ],
+  "definitions": {
+    "identificador": {
+      "description": "Identificador usado também como nível de tópico MQTT: letras, dígitos, ponto, hífen e sublinhado.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "nome": {
+      "description": "Nome em minúsculas com sublinhado, como as grandezas do catálogo (ex.: umidade_solo).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "local": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "site": { "$ref": "#/definitions/identificador" },
+        "area": { "$ref": "#/definitions/identificador" },
+        "geo": { "$ref": "#/definitions/ponto" }
+      }
+    },
+    "ponto": {
+      "description": "GeoJSON Point (RFC 7946), na ordem longitude, latitude e altitude opcional.",
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "const": "Point" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "medida": {
+      "type": "object",
+      "required": ["grandeza", "valor"],
+      "additionalProperties": false,
+      "properties": {
+        "grandeza": { "$ref": "#/definitions/nome" },
+        "valor": {
+          "type": ["number", "boolean", "string"],
+          "maxLength": 256
+        },
+        "unidade": {
+          "description": "Código UCUM. Se omitido, vale a unidade do perfil do dispositivo.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    "evento": {
+      "type": "object",
+      "required": ["nome"],
+      "additionalProperties": false,
+      "properties": {
+        "nome": { "$ref": "#/definitions/nome" },
+        "severidade": { "enum": ["info", "aviso", "critico"] },
+        "detalhes": { "type": "object" }
+      }
+    },
+    "comando": {
+      "type": "object",
+      "required": ["nome"],
+      "additionalProperties": false,
+      "properties": {
+        "nome": { "$ref": "#/definitions/nome" },
+        "parametros": { "type": "object" }
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "versao": "1.0",
+  "id_mensagem": "9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a",
+  "dispositivo": "luminaria-praca-12",
+  "tipo": "estado",
+  "timestamp": "2026-10-19T00:05:00+00:00",
+  "estado": { "brilho": 40 }
+}

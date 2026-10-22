@@ -1,0 +1,9 @@
+{
+  "versao": "1.0",
+  "id_mensagem": "5a8e1c2d-3b4f-4a6e-9c7d-1e2f3a4b5c6d",
+  "dispositivo": "nivel-reservatorio-01",
+  "tipo": "telemetria",
+  "medidas": [
+    { "grandeza": "nivel", "valor": 4.2 }
+  ]
+}

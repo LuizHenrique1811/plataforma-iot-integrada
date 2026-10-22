@@ -1,0 +1,1328 @@
+openapi: 3.1.0
+info:
+  title: Plataforma IoT Integrada - API REST
+  version: 1.0.0
+  description: |
+    API REST da plataforma (seção 4.6 do documento de requisitos). Este arquivo é a fonte da
+    verdade: a documentação interativa servida em `/docs` é gerada a partir dele (RF-APP-01).
+
+    **Autenticação** ([ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)):
+    - `tokenDispositivo`: token emitido no cadastro do dispositivo, usado na ingestão.
+    - `chaveApi`: chave de API de uma pessoa, integração ou nó de borda, com inquilino e papel.
+
+    **Listagens** (RF-APP-07): todas aceitam `pagina`, `tamanho` e `ordenar` e respondem no
+    envelope `Pagina` (`itens`, `pagina`, `tamanho`, `total`).
+  license:
+    name: Uso acadêmico
+
+servers:
+  - url: http://localhost:8000
+    description: Instância central
+  - url: http://localhost:8001
+    description: Nó de borda
+
+tags:
+  - name: ingestao
+    description: Entrada de mensagens por HTTP (RF-ING-02, RF-ING-03).
+  - name: catalogo
+    description: Domínios, perfis, locais e áreas (RF-CEN-01 a 03).
+  - name: dispositivos
+    description: Cadastro, credenciais, histórico e último estado (RF-DIS-01, RF-DIS-02, RF-DAD-01, RF-DAD-02).
+  - name: regras
+    description: Regras e alarmes (RF-PRO-02, RF-PRO-03, RF-PRO-05).
+  - name: administracao
+    description: Inquilinos, chaves de API e mensagens rejeitadas.
+  - name: operacao
+    description: Saúde, métricas e contratos publicados.
+
+paths:
+  /api/v1/ingestao:
+    post:
+      tags: [ingestao]
+      operationId: ingerirMensagem
+      summary: Enviar uma mensagem canônica por HTTP
+      description: |
+        Para quem não usa MQTT. A mensagem passa pelo pipeline de ingestão: validação contra o
+        JSON Schema da versão, deduplicação por `id_mensagem`, enriquecimento e persistência.
+        Reenviar a mesma mensagem é seguro: a resposta é 202 com situação `duplicada`.
+      security:
+        - tokenDispositivo: []
+        - chaveApi: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './json-schema/mensagem-canonica-1.0.json'
+      responses:
+        '202':
+          description: Mensagem aceita ou já recebida antes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoIngestao'
+        '400':
+          description: Mensagem fora do contrato; a resposta lista os erros. A mensagem vai para a DLQ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '422':
+          description: Mensagem válida no contrato, mas incompatível com o catálogo (dispositivo desconhecido, grandeza fora do perfil, unidade incompatível). A mensagem vai para a DLQ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/ingestao/lote:
+    post:
+      tags: [ingestao]
+      operationId: ingerirLote
+      summary: Enviar um lote de mensagens (sincronização de nós de borda)
+      description: Cada mensagem é processada individualmente e tem seu próprio resultado (RF-ING-03).
+      security:
+        - chaveApi: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './json-schema/lote-1.0.json'
+      responses:
+        '200':
+          description: Lote processado; resultado por mensagem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoLote'
+        '400':
+          description: Envelope do lote fora do contrato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+
+  /api/v1/catalogo/dominios:
+    get:
+      tags: [catalogo]
+      operationId: listarDominios
+      summary: Listar os domínios do catálogo do inquilino
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de domínios.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Dominio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [catalogo]
+      operationId: criarDominio
+      summary: Criar um domínio novo no catálogo do inquilino
+      description: Um domínio novo é só configuração, sem alteração de código (RF-CEN-01, RNF-08).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Dominio'
+      responses:
+        '201':
+          description: Domínio criado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dominio'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/catalogo/perfis:
+    get:
+      tags: [catalogo]
+      operationId: listarPerfis
+      summary: Listar os perfis de dispositivo
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de perfis.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Perfil'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [catalogo]
+      operationId: criarPerfil
+      summary: Criar um perfil de dispositivo
+      description: Grandezas, unidades, faixa válida e intervalo esperado de envio (RF-CEN-02).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Perfil'
+      responses:
+        '201':
+          description: Perfil criado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Perfil'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/sites:
+    get:
+      tags: [catalogo]
+      operationId: listarSites
+      summary: Listar os locais (sites) do inquilino
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de locais.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Site'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [catalogo]
+      operationId: criarSite
+      summary: Cadastrar um local (bairro, campus, fazenda)
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Site'
+      responses:
+        '201':
+          description: Local criado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/sites/{id}/areas:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    get:
+      tags: [catalogo]
+      operationId: listarAreas
+      summary: Listar as áreas de um local, com geometria
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de áreas.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Area'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+    post:
+      tags: [catalogo]
+      operationId: criarArea
+      summary: Cadastrar uma área (praça, talhão, silo) num local
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Area'
+      responses:
+        '201':
+          description: Área criada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Area'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/dispositivos:
+    get:
+      tags: [dispositivos]
+      operationId: listarDispositivos
+      summary: Listar dispositivos, com filtros
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+        - name: dominio
+          in: query
+          schema:
+            type: string
+        - name: perfil
+          in: query
+          schema:
+            type: string
+        - name: site
+          in: query
+          schema:
+            type: string
+        - name: area
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Página de dispositivos.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Dispositivo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [dispositivos]
+      operationId: cadastrarDispositivo
+      summary: Cadastrar dispositivo e obter credenciais
+      description: O token do dispositivo aparece só nesta resposta; a plataforma guarda apenas o hash (RF-DIS-01, RF-DIS-02).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Dispositivo'
+      responses:
+        '201':
+          description: Dispositivo cadastrado, com o token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispositivoCadastrado'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/dispositivos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    get:
+      tags: [dispositivos]
+      operationId: obterDispositivo
+      summary: Obter um dispositivo com todos os atributos
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Dispositivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispositivo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/dispositivos/{id}/credencial:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    delete:
+      tags: [dispositivos]
+      operationId: revogarCredencial
+      summary: Revogar a credencial do dispositivo
+      description: A credencial revogada é recusada na conexão seguinte; nos nós de borda, a partir da próxima sincronização (ADR-0015).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '204':
+          description: Credencial revogada.
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/dispositivos/{id}/telemetria:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    get:
+      tags: [dispositivos]
+      operationId: consultarTelemetria
+      summary: Consultar histórico por grandeza e intervalo
+      description: Ordenado pelo horário da medição (RF-DAD-01).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+        - name: grandeza
+          in: query
+          schema:
+            type: string
+        - name: inicio
+          in: query
+          description: Início do intervalo (inclusivo), ISO 8601.
+          schema:
+            type: string
+            format: date-time
+        - name: fim
+          in: query
+          description: Fim do intervalo (exclusivo), ISO 8601.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Página de medições.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Medicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/dispositivos/{id}/estado:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    get:
+      tags: [dispositivos]
+      operationId: obterEstado
+      summary: Último valor de cada grandeza e situação online, offline ou desconhecida
+      description: Lido da tabela de último estado, sem consultar o histórico (RF-DAD-02, RF-DIS-06, ADR-0010).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Estado do dispositivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoDispositivo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/regras:
+    get:
+      tags: [regras]
+      operationId: listarRegras
+      summary: Listar regras
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de regras.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Regra'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [regras]
+      operationId: criarRegra
+      summary: Criar regra de processamento (central ou de borda)
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Regra'
+      responses:
+        '201':
+          description: Regra criada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Regra'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/alarmes:
+    get:
+      tags: [regras]
+      operationId: listarAlarmes
+      summary: Listar alarmes
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+        - name: estado
+          in: query
+          schema:
+            $ref: '#/components/schemas/EstadoAlarme'
+        - name: severidade
+          in: query
+          schema:
+            $ref: '#/components/schemas/Severidade'
+      responses:
+        '200':
+          description: Página de alarmes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Alarme'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+
+  /api/v1/alarmes/{id}/reconhecer:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    post:
+      tags: [regras]
+      operationId: reconhecerAlarme
+      summary: Reconhecer um alarme ativo (RF-PRO-05)
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Alarme reconhecido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alarme'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/alarmes/{id}/resolver:
+    parameters:
+      - $ref: '#/components/parameters/idCaminho'
+    post:
+      tags: [regras]
+      operationId: resolverAlarme
+      summary: Resolver um alarme (RF-PRO-05)
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Alarme resolvido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alarme'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/inquilinos:
+    get:
+      tags: [administracao]
+      operationId: listarInquilinos
+      summary: Listar inquilinos (administrador da plataforma)
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+      responses:
+        '200':
+          description: Página de inquilinos.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Inquilino'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+    post:
+      tags: [administracao]
+      operationId: criarInquilino
+      summary: Criar inquilino (administrador da plataforma)
+      security:
+        - chaveApi: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Inquilino'
+      responses:
+        '201':
+          description: Inquilino criado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inquilino'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '409':
+          $ref: '#/components/responses/Conflito'
+
+  /api/v1/chaves:
+    post:
+      tags: [administracao]
+      operationId: criarChave
+      summary: Emitir chave de API para um papel
+      description: A chave aparece só nesta resposta; a plataforma guarda apenas o hash (RF-SEG-02).
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/inquilino'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Chave'
+      responses:
+        '201':
+          description: Chave emitida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChaveEmitida'
+        '400':
+          $ref: '#/components/responses/Invalido'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+
+  /api/v1/rejeitadas:
+    get:
+      tags: [administracao]
+      operationId: listarRejeitadas
+      summary: Consultar a fila de mensagens inválidas (DLQ)
+      description: Cada mensagem recusada fica registrada com a etapa e o motivo; nenhuma se perde em silêncio.
+      security:
+        - chaveApi: []
+      parameters:
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+        - $ref: '#/components/parameters/ordenar'
+        - $ref: '#/components/parameters/inquilino'
+      responses:
+        '200':
+          description: Página de mensagens rejeitadas.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagina'
+                  - properties:
+                      itens:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Rejeitada'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+
+  /saude:
+    get:
+      tags: [operacao]
+      operationId: saude
+      summary: Verificar se o serviço está no ar
+      security: []
+      responses:
+        '200':
+          description: Serviço no ar.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [situacao, papel]
+                properties:
+                  situacao:
+                    const: ok
+                  papel:
+                    enum: [central, borda]
+                  versao:
+                    type: string
+
+  /metrics:
+    get:
+      tags: [operacao]
+      operationId: metricas
+      summary: Métricas no formato Prometheus (RF-OBS-01)
+      security: []
+      responses:
+        '200':
+          description: Métricas em texto no formato de exposição do Prometheus.
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    tokenDispositivo:
+      type: http
+      scheme: bearer
+      description: Token do dispositivo, emitido em POST /api/v1/dispositivos.
+    chaveApi:
+      type: apiKey
+      in: header
+      name: X-Chave-API
+      description: Chave de API emitida em POST /api/v1/chaves.
+
+  parameters:
+    pagina:
+      name: pagina
+      in: query
+      description: Número da página, a partir de 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    tamanho:
+      name: tamanho
+      in: query
+      description: Itens por página.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+    ordenar:
+      name: ordenar
+      in: query
+      description: Campo de ordenação; prefixo `-` para ordem decrescente (ex.:`-criado_em`).
+      schema:
+        type: string
+    inquilino:
+      name: X-Inquilino
+      in: header
+      description: Só para o administrador da plataforma, que não pertence a um inquilino. As demais chaves já trazem o inquilino.
+      schema:
+        type: string
+    idCaminho:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identificador'
+
+  responses:
+    Invalido:
+      description: Requisição fora do contrato.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    NaoAutenticado:
+      description: Credencial ausente, inválida ou revogada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    Proibido:
+      description: O papel ou o inquilino da credencial não permite a operação.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    NaoEncontrado:
+      description: Recurso não encontrado no inquilino.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    Conflito:
+      description: Já existe um recurso com esse identificador, ou a transição de estado não é permitida.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+
+  schemas:
+    Identificador:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    Nome:
+      type: string
+      pattern: '^[a-z][a-z0-9_]{0,63}$'
+    Severidade:
+      enum: [info, aviso, critico]
+    EstadoAlarme:
+      enum: [ativo, reconhecido, resolvido]
+    Papel:
+      description: Papéis de pessoas (RF-SEG-02) e de nós de borda (RF-SEG-05).
+      enum: [administrador, gestor, operador, integrador, leitor, no_borda]
+    Geometria:
+      description: GeoJSON (RFC 7946); ponto ou polígono.
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          enum: [Point, Polygon]
+        coordinates:
+          type: array
+
+    Erro:
+      type: object
+      required: [codigo, mensagem]
+      properties:
+        codigo:
+          type: string
+          description: Código estável do erro (ex.:fora_do_contrato, dispositivo_desconhecido).
+        mensagem:
+          type: string
+        erros:
+          type: array
+          description: Lista de erros de validação, um por campo.
+          items:
+            type: object
+            required: [caminho, mensagem]
+            properties:
+              caminho:
+                type: string
+                description: JSON Pointer do campo com erro (ex.:/medidas/0/valor).
+              mensagem:
+                type: string
+
+    Pagina:
+      type: object
+      required: [itens, pagina, tamanho, total]
+      properties:
+        itens:
+          type: array
+        pagina:
+          type: integer
+        tamanho:
+          type: integer
+        total:
+          type: integer
+
+    ResultadoIngestao:
+      type: object
+      required: [situacao]
+      properties:
+        id_mensagem:
+          type: string
+          format: uuid
+        situacao:
+          enum: [aceita, duplicada, rejeitada]
+        etapa:
+          type: string
+          description: Etapa do pipeline que recusou a mensagem.
+        motivo:
+          type: string
+        erros:
+          type: array
+          items:
+            type: object
+            properties:
+              caminho:
+                type: string
+              mensagem:
+                type: string
+
+    ResultadoLote:
+      type: object
+      required: [total, aceitas, duplicadas, rejeitadas, resultados]
+      properties:
+        total:
+          type: integer
+        aceitas:
+          type: integer
+        duplicadas:
+          type: integer
+        rejeitadas:
+          type: integer
+        resultados:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/ResultadoIngestao'
+              - type: object
+                required: [indice]
+                properties:
+                  indice:
+                    type: integer
+                    description: Posição da mensagem no lote, a partir de 0.
+
+    Inquilino:
+      type: object
+      required: [id, nome]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+
+    Chave:
+      type: object
+      required: [papel]
+      properties:
+        id:
+          type: string
+          readOnly: true
+        papel:
+          $ref: '#/components/schemas/Papel'
+        descricao:
+          type: string
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+
+    ChaveEmitida:
+      allOf:
+        - $ref: '#/components/schemas/Chave'
+        - type: object
+          required: [chave]
+          properties:
+            chave:
+              type: string
+              description: Valor da chave, exibido uma única vez.
+
+    Dominio:
+      type: object
+      required: [id, nome]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+        descricao:
+          type: string
+
+    GrandezaDoPerfil:
+      type: object
+      required: [grandeza, unidade]
+      properties:
+        grandeza:
+          $ref: '#/components/schemas/Nome'
+        unidade:
+          type: string
+          description: Código UCUM.
+        minimo:
+          type: number
+          description: Abaixo disso a medida é marcada como suspeita.
+        maximo:
+          type: number
+          description: Acima disso a medida é marcada como suspeita.
+
+    Perfil:
+      type: object
+      required: [id, nome, grandezas, intervalo_envio_s]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+        grandezas:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GrandezaDoPerfil'
+        intervalo_envio_s:
+          type: integer
+          minimum: 1
+          description: Intervalo esperado entre envios; base da situação online/offline (RF-DIS-06).
+
+    Site:
+      type: object
+      required: [id, nome]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+        geo:
+          $ref: '#/components/schemas/Geometria'
+
+    Area:
+      type: object
+      required: [id, nome]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+        geo:
+          $ref: '#/components/schemas/Geometria'
+
+    Dispositivo:
+      type: object
+      required: [id, perfil, dominio, site]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        perfil:
+          $ref: '#/components/schemas/Identificador'
+        dominio:
+          $ref: '#/components/schemas/Identificador'
+        site:
+          $ref: '#/components/schemas/Identificador'
+        area:
+          $ref: '#/components/schemas/Identificador'
+        fabricante:
+          type: string
+        firmware:
+          type: string
+        inquilino:
+          type: string
+          readOnly: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        revogado_em:
+          type: [string, 'null']
+          format: date-time
+          readOnly: true
+
+    DispositivoCadastrado:
+      allOf:
+        - $ref: '#/components/schemas/Dispositivo'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: Token do dispositivo, exibido uma única vez.
+
+    Medicao:
+      type: object
+      required: [timestamp, grandeza, valor]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        grandeza:
+          type: string
+        valor:
+          type: [number, boolean, string]
+        unidade:
+          type: string
+        suspeita:
+          type: boolean
+          description: Fora da faixa válida do perfil (RF-CEN-02).
+        id_mensagem:
+          type: string
+          format: uuid
+        via:
+          type: string
+
+    EstadoDispositivo:
+      type: object
+      required: [dispositivo, situacao, grandezas]
+      properties:
+        dispositivo:
+          type: string
+        situacao:
+          enum: [online, offline, desconhecido]
+        ultimo_contato:
+          type: [string, 'null']
+          format: date-time
+        grandezas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Medicao'
+
+    Condicao:
+      type: object
+      required: [tipo, grandeza]
+      properties:
+        tipo:
+          description: limite (comparação simples), janela (condição mantida por um período) ou ausencia (sem dados por um período).
+          enum: [limite, janela, ausencia]
+        grandeza:
+          $ref: '#/components/schemas/Nome'
+        operador:
+          enum: ['>', '>=', '<', '<=', '==', '!=']
+        valor:
+          type: number
+        duracao_s:
+          type: integer
+          minimum: 1
+          description: Obrigatório para janela e ausencia.
+        dispositivo:
+          $ref: '#/components/schemas/Identificador'
+        dominio:
+          $ref: '#/components/schemas/Identificador'
+        site:
+          $ref: '#/components/schemas/Identificador'
+        area:
+          $ref: '#/components/schemas/Identificador'
+
+    Acao:
+      type: object
+      required: [tipo]
+      properties:
+        tipo:
+          enum: [alarme, notificar, comando, webhook, publicar]
+        severidade:
+          $ref: '#/components/schemas/Severidade'
+        mensagem:
+          type: string
+        canal:
+          description: Canal de notificação; no MVP, `log` (ADR-0012).
+          type: string
+        comando:
+          type: object
+          required: [nome]
+          properties:
+            nome:
+              $ref: '#/components/schemas/Nome'
+            parametros:
+              type: object
+        url:
+          type: string
+          format: uri
+        topico:
+          type: string
+
+    Regra:
+      type: object
+      required: [id, nome, condicao, acoes]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        nome:
+          type: string
+        ambito:
+          description: Onde a regra é avaliada.
+          enum: [central, borda]
+          default: central
+        ativa:
+          type: boolean
+          default: true
+        condicao:
+          $ref: '#/components/schemas/Condicao'
+        acoes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Acao'
+
+    Alarme:
+      type: object
+      required: [id, regra, dispositivo, severidade, estado, ocorrido_em]
+      properties:
+        id:
+          type: string
+        regra:
+          type: string
+        dispositivo:
+          type: string
+        severidade:
+          $ref: '#/components/schemas/Severidade'
+        estado:
+          $ref: '#/components/schemas/EstadoAlarme'
+        mensagem:
+          type: string
+        origem:
+          enum: [central, borda]
+        ocorrido_em:
+          type: string
+          format: date-time
+          description: Horário em que a condição ocorreu, inclusive para alarmes gerados na borda durante a desconexão (RF-PRO-05).
+        reconhecido_em:
+          type: [string, 'null']
+          format: date-time
+        resolvido_em:
+          type: [string, 'null']
+          format: date-time
+
+    Rejeitada:
+      type: object
+      required: [id, recebido_em, etapa, motivo]
+      properties:
+        id:
+          type: integer
+        recebido_em:
+          type: string
+          format: date-time
+        etapa:
+          type: string
+        motivo:
+          type: string
+        erros:
+          type: array
+          items:
+            type: object
+        origem:
+          type: string
+        carga:
+          description: Conteúdo recebido, como chegou.

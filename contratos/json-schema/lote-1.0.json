@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lote de mensagens",
+  "description": "Envelope de POST /api/v1/ingestao/lote, usado na sincronização dos nós de borda (RF-ING-03, RF-EDG-02). Cada item é validado individualmente contra o schema da sua versão, para que o resultado seja informado mensagem a mensagem: um item inválido não recusa o lote inteiro.",
+  "type": "object",
+  "required": ["versao", "mensagens"],
+  "additionalProperties": false,
+  "properties": {
+    "versao": {
+      "description": "Versão do envelope.",
+      "const": "1.0"
+    },
+    "via": {
+      "description": "Nó de borda ou sistema que enviou o lote.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "mensagens": {
+      "description": "Mensagens canônicas (mensagem-canonica-1.0.json).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "type": "object" }
+    }
+  }
+}

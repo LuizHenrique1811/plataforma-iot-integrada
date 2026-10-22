@@ -1,0 +1,8 @@
+{
+  "versao": "1.0",
+  "via": "borda-fazenda-boa-vista",
+  "mensagens": [
+    { "versao": "1.0", "id_mensagem": "b6d1e0c4-5f7a-4c2e-9d13-8a2f61c0e9b7", "dispositivo": "solo-talhao07-02", "tipo": "telemetria", "timestamp": "2026-10-19T05:10:00Z", "via": "borda-fazenda-boa-vista", "medidas": [ { "grandeza": "umidade_solo", "valor": 23.5, "unidade": "%" } ] },
+    { "versao": "1.0", "id_mensagem": "c7e2f1d5-6a8b-4d3f-8e24-9b3a72d1fac8", "dispositivo": "solo-talhao07-02", "tipo": "telemetria", "timestamp": "2026-10-19T05:25:00Z", "via": "borda-fazenda-boa-vista", "medidas": [ { "grandeza": "umidade_solo", "valor": 17.9, "unidade": "%" } ] }
+  ]
+}
