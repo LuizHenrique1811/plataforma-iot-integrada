@@ -1,171 +1,187 @@
 # Matriz de rastreabilidade
 
-Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.md)) ao seu status e à evidência de que foi atendido.
-
-> **Pendente:** a lista abaixo foi montada a partir do briefing do projeto, antes de o documento de requisitos estar no repositório. Quando `docs/requisitos.md` chegar, conferir se todos os requisitos Essenciais estão aqui e preencher a coluna **Descrição**.
+Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.md)) ao seu tratamento, ao status e à evidência de que foi atendido. As descrições abaixo são resumos; o texto oficial está no documento.
 
 ## Legenda
 
-**Tratamento previsto:** o que se planeja fazer com o requisito.
+**Tratamento previsto:**
 
 - **implementar**: implementado de verdade, com testes.
-- **simplificar**: implementado numa versão reduzida; a simplificação fica descrita nas observações.
-- **documentar**: não implementado; a justificativa fica descrita (no ADR ou em `arquitetura.md`).
+- **simplificar**: implementado numa versão reduzida, descrita nas observações.
+- **documentar**: não implementado; a justificativa fica no ADR ou em `arquitetura.md`.
 
 **Status:** `pendente` → `implementado`, `simplificado` ou `documentado`.
 
 **Evidência:** hash do commit (que cita o ID do requisito), caminho do teste automatizado e/ou ADR.
 
-## Requisitos funcionais Essenciais
+## Requisitos funcionais Essenciais (33)
 
-### CEN
+### CEN · Cenários e catálogo
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-CEN-01 | | implementar | pendente | | |
-| RF-CEN-02 | | implementar | pendente | | |
-| RF-CEN-03 | | implementar | pendente | | |
+| RF-CEN-01 | Catálogo de domínios configurável por inquilino | Gestor cria o domínio "pecuaria" pela API ou painel, sem alterar código | implementar | pendente | [ADR-0003](adr/0003-catalogo-configuravel.md) |
+| RF-CEN-02 | Perfis de dispositivo: grandezas, unidades, faixa válida e intervalo esperado de envio | Medida fora da faixa é marcada como suspeita; perfil reutilizável entre projetos | implementar | pendente | [ADR-0003](adr/0003-catalogo-configuravel.md) |
+| RF-CEN-03 | Hierarquia inquilino → local → área → dispositivo | A mesma hierarquia representa um bairro com praças e uma fazenda com talhões | implementar | pendente | |
 
-### ING
+### ING · Conectividade e ingestão
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-ING-01 | | implementar | pendente | | |
-| RF-ING-02 | | implementar | pendente | | |
-| RF-ING-03 | | implementar | pendente | | |
-| RF-ING-04 | | implementar | pendente | | Regras só avaliam dado "atual", para não gerar alarme com dado velho (ADR de dados atrasados). |
-| RF-ING-06 | | implementar | pendente | | |
-| RF-ING-08 | | implementar | pendente | | Deduplicação por `id_mensagem` (Idempotent Receiver); janela de pelo menos 7 dias (ADR). |
+| RF-ING-01 | Telemetria via MQTT 3.1.1 e 5.0 sobre TLS | Dispositivo autenticado publica no tópico canônico; mensagem persistida em até 2 s | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-ING-02 | Telemetria via HTTPS (`POST /api/v1/ingestao`) | Válida retorna 202; inválida retorna 400 com a lista de erros | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-ING-03 | Lotes (`POST /api/v1/ingestao/lote`) com resultado por mensagem | Lote de 5.000 com 3 inválidas grava 4.997 e informa as 3 recusadas | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-ING-04 | Aceitar dados atrasados, armazenando pelo horário da medição | Medição de 48 h atrás entra na posição correta e não gera alarme como se fosse atual | implementar | pendente | [ADR-0013](adr/0013-dados-atrasados-e-agregados.md) |
+| RF-ING-06 | Validar cada mensagem contra o JSON Schema da sua versão | Mensagem fora do esquema vai para a DLQ, com o motivo | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-ING-08 | Descartar mensagens duplicadas pelo `id_mensagem` | Mensagem reenviada pela borda com o mesmo id é armazenada uma única vez | implementar | pendente | [ADR-0011](adr/0011-janela-de-deduplicacao.md) |
 
-### EDG
+- RF-ING-01: o listener TLS e a autenticação do Mosquitto entram com o bloco de segurança (semana 2); hoje os Compose usam a porta 1883 sem TLS.
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+### EDG · Borda e conectividade limitada
+
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-EDG-01 | | implementar | pendente | | |
-| RF-EDG-02 | | implementar | pendente | | |
+| RF-EDG-01 | Nó de borda com ingestão local (MQTT e HTTP) e fila persistente | Com o link desligado por 72 h, nenhuma mensagem aceita pelo nó é perdida | implementar | pendente | [ADR-0006](adr/0006-uma-imagem-dois-ambientes.md), [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md) |
+| RF-EDG-02 | Sincronizar com a central ao reconectar, em lotes, sem perdas nem duplicatas | Após a reconexão, cada mensagem chega uma única vez, ordenada pelo horário da medição | implementar | pendente | [ADR-0011](adr/0011-janela-de-deduplicacao.md) |
 
-### DIS
+### DIS · Gestão de dispositivos
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-DIS-01 | | implementar | pendente | | |
-| RF-DIS-02 | | simplificar | pendente | | A borda só aplica revogações novas de credencial após reconectar (ADR). |
-| RF-DIS-06 | | implementar | pendente | | Terceiro estado "desconhecido" para dispositivos atrás de borda sem sincronizar (ADR). |
+| RF-DIS-01 | Cadastro com perfil, domínio, local, área, fabricante, firmware e inquilino | Dispositivo cadastrado pela API **e** pelo painel aparece com todos os atributos | implementar (API); simplificar (painel) | pendente | [ADR-0019](adr/0019-painel-de-cadastro.md) |
+| RF-DIS-02 | Credenciais únicas por dispositivo (X.509 ou token), com revogação | Credencial revogada é recusada na conexão seguinte, na central e nos nós de borda | simplificar | pendente | [ADR-0015](adr/0015-revogacao-de-credencial-na-borda.md) |
+| RF-DIS-06 | Online/offline pelo intervalo esperado do perfil | Sensor que envia de hora em hora não aparece offline após 5 min sem dados | implementar | pendente | [ADR-0010](adr/0010-estado-desconhecido.md) |
 
-### PRO
+- RF-DIS-01: o critério pede cadastro pela API **e** por um painel. O painel é a documentação interativa da API (Swagger UI), sem interface web própria.
+- RF-DIS-02: token por dispositivo é uma das opções do próprio requisito. A simplificação está na borda, que só aplica revogações novas depois de reconectar.
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+### INT · Integração de projetos existentes
+
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-PRO-01 | | implementar | pendente | | |
-| RF-PRO-02 | | implementar | pendente | | No MVP, "área" é filtro por identificador; a condição geométrica depende de RF-CEN-04 (fase 2). |
-| RF-PRO-03 | | implementar | pendente | | Cada ação do motor de regras tem um teste automatizado. |
-| RF-PRO-05 | | implementar | pendente | | Depende de regra local na borda (RF-EDG-03); ver inconsistências. |
+| RF-INT-01 | Publicar o contrato canônico versionado (JSON Schema e AsyncAPI) | Contrato acessível por URL pública, com histórico de versões | implementar | pendente | [ADR-0002](adr/0002-integracao-por-contratos-abertos.md) |
+| RF-INT-02 | Integração apenas com protocolos padrão, sem biblioteca proprietária | Exemplos funcionais em três linguagens usando só bibliotecas genéricas de MQTT/HTTP | implementar | pendente | `simuladores/` |
+| RF-INT-03 | Adaptadores de protocolo plugáveis em contêiner, em qualquer linguagem | Novo adaptador implantado sem recompilar nem reiniciar o núcleo (central ou borda) | implementar | pendente | `adaptadores-plugaveis/ar-urbano/` |
 
-### DAD
+### PRO · Processamento e regras
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-DAD-01 | | implementar | pendente | | |
-| RF-DAD-02 | | implementar | pendente | | |
-| RF-DAD-05 | | simplificar | pendente | | |
-| RF-DAD-06 | | documentar | pendente | | Auditoria completa fica fora do escopo; justificar. |
+| RF-PRO-01 | Normalizar unidades e enriquecer com perfil, domínio, local e área | Mensagem armazenada contém inquilino, domínio, local e área do cadastro | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-PRO-02 | Regras condição → ação: limite, ausência de dados, janela de tempo e área geográfica | Regra "temperatura do silo > 30 °C" dispara em até 3 s após a mensagem | implementar | pendente | |
+| RF-PRO-03 | Ações: gerar alarme, notificar, enviar comando, chamar webhook e publicar em tópico | Cada tipo de ação é demonstrado por um teste automatizado | implementar | pendente | |
+| RF-PRO-05 | Ciclo de vida dos alarmes (ativo, reconhecido, resolvido) com severidade | Alarme gerado na borda durante a desconexão aparece com o horário em que ocorreu | implementar | pendente | [ADR-0009](adr/0009-relogio-da-borda.md) |
 
-### APP
+- RF-PRO-02: no MVP, "área geográfica" é filtro pelo identificador da área; a condição por geometria depende do RF-CEN-04 (fase 2).
+- RF-PRO-03: as ações "enviar comando" e "chamar webhook" são Essenciais aqui, embora comandos (RF-DIS-05) e webhooks com novas tentativas (RF-APP-03) sejam Importantes. No MVP, a ação publica no tópico `comando` e faz uma chamada HTTP simples. "Notificar" registra a notificação no log ([ADR-0012](adr/0012-sms-pela-central.md)).
+- RF-PRO-05: depende de regra local na borda (RF-EDG-03); ver inconsistência 1.
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+### DAD · Dados
+
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-APP-01 | | implementar | pendente | | |
-| RF-APP-07 | | implementar | pendente | | |
+| RF-DAD-01 | Séries temporais com consulta por dispositivo, grandeza, área e intervalo | Consulta de 24 h de um dispositivo responde em até 1 s | implementar | pendente | |
+| RF-DAD-02 | Último valor de cada grandeza de cada dispositivo | Último estado disponível sem consultar o histórico | implementar | pendente | [ADR-0017](adr/0017-ultimo-estado-no-postgresql.md) |
+| RF-DAD-05 | Anonimizar ou pseudonimizar dados pessoais antes de armazenar ou publicar | Nenhum dado pessoal identificável aparece na API pública | simplificar | pendente | |
 
-### INT
+- RF-DAD-05: a simplificação ainda não está detalhada. Proposta: o perfil marca quais campos são pessoais, e esses campos são pseudonimizados antes de gravar e omitidos na API pública.
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+### APP · Aplicação e serviços
+
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-INT-01 | | implementar | pendente | | |
-| RF-INT-02 | | implementar | pendente | | |
-| RF-INT-03 | | implementar | pendente | | |
+| RF-APP-01 | API REST versionada e documentada em OpenAPI 3 | Documentação interativa gerada a partir do contrato e testada no pipeline | implementar | pendente | |
+| RF-APP-07 | Paginação, filtros e ordenação padronizados nas listagens | Todas as listagens aceitam os mesmos parâmetros de paginação | implementar | pendente | |
 
-### SEG
+### SEG · Segurança e acesso
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-SEG-01 | | simplificar | pendente | | |
-| RF-SEG-02 | | simplificar | pendente | | |
-| RF-SEG-03 | | simplificar | pendente | | |
-| RF-SEG-04 | | simplificar | pendente | | |
-| RF-SEG-05 | | simplificar | pendente | | SQLCipher na fila da borda; o local da chave fica em ADR (no mesmo disco não cumpre o critério). |
+| RF-SEG-01 | Autenticação por OpenID Connect, com segundo fator para administradores | Administrador sem segundo fator não acessa o painel | documentar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-02 | Papéis: administrador, gestor, operador, integrador e leitor | Operador não consegue alterar regras nem dispositivos | simplificar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-03 | Isolar os dados de cada inquilino | Usuário de um inquilino não vê dados de outro, nem pela API | simplificar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-04 | Restringir cada dispositivo aos próprios tópicos MQTT, na central e na borda | Publicação em tópico de outro dispositivo é recusada | simplificar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-05 | Credencial própria para nós de borda e fila local cifrada | Disco retirado de um nó de borda não revela os dados guardados | simplificar | pendente | [ADR-0014](adr/0014-chave-da-fila-da-borda.md) |
 
-Simplificações previstas para o grupo SEG (associar a cada ID quando o documento estiver disponível):
+Simplificações previstas, sem Keycloak ([ADR-0018](adr/0018-autenticacao-sem-keycloak.md)):
 
-- Keycloak com TOTP para o administrador.
-- Token por dispositivo em vez de certificado X.509.
-- `tenant_id` com row-level security no PostgreSQL.
-- ACL de tópicos no Mosquitto.
-- SQLCipher na fila da borda.
+- **SEG-01:** sem OIDC e sem segundo fator, apenas documentado. Keycloak com TOTP só se sobrar tempo.
+- **SEG-02:** chave de API com papel guardado em tabela.
+- **SEG-03:** `tenant_id` com row-level security no PostgreSQL.
+- **SEG-04:** ACL por dispositivo no Mosquitto, sobre o padrão `{inquilino}/{site}/{dominio}/{dispositivo}/...`.
+- **SEG-05:** SQLCipher na fila da borda.
 
-### OBS
+### OBS · Observabilidade e administração
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-OBS-01 | | simplificar | pendente | | |
-| RF-OBS-02 | | simplificar | pendente | | |
+| RF-OBS-01 | Métricas: mensagens por segundo, latência e erros por módulo | Métricas disponíveis em formato Prometheus | simplificar | pendente | [ADR-0007](adr/0007-infraestrutura-aberta.md) |
+| RF-OBS-02 | Logs estruturados (JSON) com identificador de correlação | Uma mensagem pode ser rastreada em todos os módulos, da borda à central | simplificar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
 
-Simplificação prevista para o grupo OBS: endpoint `/metrics` (Prometheus) e logs em JSON com `correlation_id` igual ao `id_mensagem`.
+Simplificação prevista: endpoint `/metrics` no formato Prometheus, sem subir o servidor Prometheus, e logs JSON com `correlation_id` igual ao `id_mensagem`.
 
-## Requisitos não funcionais citados no briefing
+## Requisitos não funcionais
 
-Prioridade a confirmar no documento de requisitos.
+O documento não atribui prioridade aos RNFs.
 
-| ID | Descrição | Tratamento previsto | Status | Evidência | Observações |
+| ID | Atributo | Métrica | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RNF-01 | | implementar até 1.000 msg/s; documentar 10.000 msg/s | pendente | | Teste de carga em `testes-sistema/carga`. |
-| RNF-02 | | implementar | pendente | | Latência medida no teste de carga e exibida no Grafana. |
-| RNF-07 | | implementar WAL; documentar hardware | pendente | | SSD em vez de cartão SD no Raspberry Pi; SQLite em modo WAL (ADR). |
-| RNF-08 | | implementar | pendente | | Neutralidade de cenário; comprovada pelo UC-06 ao vivo. |
-| RNF-15 | | implementar | pendente | | Cobertura mínima de 70% no núcleo, medida no CI. |
-| RNF-18 | | documentar | pendente | | Backup e RTO ficam fora do escopo; justificar. |
+| RNF-01 | Desempenho | 1.000 msg/s num servidor central; 10.000 com réplicas | implementar 1.000; documentar 10.000 | pendente | `testes-sistema/carga/` |
+| RNF-02 | Latência | p95 ingestão → persistência ≤ 2 s e → regra ≤ 3 s; regras de borda ≤ 3 s | implementar | pendente | `testes-sistema/carga/` |
+| RNF-03 | Disponibilidade | 99,5% ao mês | documentar | pendente | |
+| RNF-04 | Tolerância a desconexão | Borda opera 72 h sem link, sem perda | implementar | pendente | `testes-sistema/desconexao/` |
+| RNF-05 | Banda limitada | Sincronização a partir de 64 kbit/s, com cargas compactadas | documentar | pendente | |
+| RNF-06 | Hardware de borda | 4 núcleos ARM e 4 GB de RAM | simplificar: limitar CPU e memória no Compose da borda e medir | pendente | |
+| RNF-07 | Robustez a falta de energia | Queda de energia não corrompe fila nem configuração | implementar WAL; documentar hardware | pendente | [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md) |
+| RNF-08 | Neutralidade de cenário | Domínio, perfil ou modelo novo só por configuração | implementar | pendente | [ADR-0003](adr/0003-catalogo-configuravel.md), UC-06 |
+| RNF-09 | Escalabilidade | Serviços centrais sem estado, escaláveis horizontalmente | implementar | pendente | |
+| RNF-10 | Durabilidade | Nenhuma mensagem confirmada (ACK) é perdida | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md), [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md) |
+| RNF-11 | Segurança | TLS 1.2+ em toda interface externa; dados e segredos cifrados em repouso | simplificar | pendente | |
+| RNF-12 | Privacidade | LGPD: minimização, finalidade e registro das operações | simplificar | pendente | |
+| RNF-13 | Independência de linguagem | 100% das interfaces descritas por contratos abertos | implementar | pendente | [ADR-0002](adr/0002-integracao-por-contratos-abertos.md) |
+| RNF-14 | Portabilidade | Contêineres OCI; Docker Compose no MVP e na borda | implementar | pendente | `infra/`, [ADR-0007](adr/0007-infraestrutura-aberta.md) |
+| RNF-15 | Manutenibilidade | Cobertura ≥ 70% no núcleo; análise estática sem falhas críticas | implementar | pendente | |
+| RNF-16 | Usabilidade e acessibilidade | Interface em português, responsiva, WCAG 2.1 AA | documentar | pendente | |
+| RNF-17 | Compatibilidade | APIs versionadas; versão descontinuada funciona por 12 meses | simplificar: prefixo `/api/v1` e política documentada | pendente | |
+| RNF-18 | Recuperação | Backup diário; RPO ≤ 24 h e RTO ≤ 4 h | documentar | pendente | |
 
 ## Requisitos fora do Essencial que entram no escopo
 
-| ID | Prioridade no documento | Tratamento previsto | Status | Evidência | Observações |
+| ID | Prioridade | Requisito | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-EDG-03 | Importante | simplificar | pendente | | Regra local simples na borda já no MVP; necessária para UC-01 e RF-PRO-05. |
-| RF-CEN-04 | Importante | documentar | pendente | | Desenho de áreas e consultas espaciais ficam para a fase 2; no MVP, área é identificador. |
-| RF-APP-05 | a confirmar | simplificar | pendente | | SMS enviado pela central por provedor; SMS direto da borda com modem GSM fica como evolução (ADR). |
+| RF-EDG-03 | Importante | Regras locais na borda, sem depender da central | simplificar | pendente | |
+| RF-CEN-04 | Importante | Geometrias GeoJSON e consultas espaciais | documentar | pendente | |
+| RF-APP-05 | Importante | Notificação por e-mail, aplicativo de mensagens e SMS | simplificar | pendente | [ADR-0012](adr/0012-sms-pela-central.md) |
+| RF-DAD-06 | Importante | Trilha de auditoria das operações administrativas | documentar | pendente | |
+
+- RF-EDG-03: uma regra local simples já no MVP (ver inconsistência 1). A regra é configurada direto na borda; a distribuição de regras pela central é o RF-EDG-04 (Importante).
+- RF-CEN-04: no MVP, área é identificador; geometria e consultas espaciais ficam para a fase 2.
+- RF-DAD-06: o briefing o listava entre os Essenciais "só documentar", mas no documento ele é Importante. Continua apenas documentado.
 
 ## Casos de uso demonstrados
 
-| UC | Passo da demo | Status | Evidência |
-|---|---|---|---|
-| UC-01 | 2. Rural com borda | pendente | |
-| UC-02 | 2. Rural com borda | pendente | |
-| UC-03 | 4. Urbano nível 2 | pendente | |
-| UC-06 | 1. Domínio novo ao vivo | pendente | |
+| UC | Requisitos citados no documento | Passo da demo | Status | Evidência |
+|---|---|---|---|---|
+| UC-01 · Fazenda com link via satélite | RF-CEN-03, RF-CEN-04, RF-EDG-01 a 03, RF-ING-03, RF-ING-04 | 2 e 3 | pendente | |
+| UC-02 · Alarme de temperatura em silo | RF-CEN-02, RF-PRO-02, RF-PRO-05, RF-APP-05 | 2 | pendente | |
+| UC-03 · Qualidade do ar urbana (nível 2) | RF-INT-03, RF-INT-05, RF-INT-06, RF-ING-06 | 4 | pendente | |
+| UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | pendente | |
 
 ## Critérios de aceite do MVP (seção 9.3)
 
 | Critério | Status | Evidência |
 |---|---|---|
 | Um projeto urbano e um rural integrados; o rural com nó de borda | pendente | |
-| Teste de desconexão de 72 h sem perda nem duplicação após a reconexão | pendente | |
+| Link da borda cortado por 72 h sem perda nem duplicação após a reconexão | pendente | |
 | Um domínio novo criado só por configuração (RNF-08) | pendente | |
 | Integração demonstrada em pelo menos três linguagens | pendente | |
-| Teste de carga comprovando RNF-01 e RNF-02 | pendente | |
+| Teste de carga comprovando RNF-01 e RNF-02 em ambiente de homologação | pendente | |
 
-## Inconsistências do documento original
+## Inconsistências do documento
 
-1. **Regra local na borda.** UC-01 e RF-PRO-05 dependem de regras locais na borda (RF-EDG-03) e de desenho de áreas (RF-CEN-04), que o documento marca como "Importante" (fase 2), enquanto o MVP promete o caso rural com borda. **Decisão:** implementar uma regra local simples já no MVP.
-2. **Condição por área geográfica.** RF-PRO-02 (Essencial) inclui condição por área geográfica, mas as consultas espaciais (RF-CEN-04) são fase 2. **Decisão:** no MVP, "área" é filtro por identificador; a geometria fica para depois.
+1. **Regra local na borda.** UC-01 e RF-PRO-05 (Essencial) dependem de regras locais na borda (RF-EDG-03) e de desenho de áreas (RF-CEN-04), ambos Importantes (fase 2), enquanto o MVP promete o caso rural com borda. **Decisão:** implementar uma regra local simples já no MVP.
+2. **Condição por área geográfica.** RF-PRO-02 (Essencial) inclui condição por área geográfica, mas as consultas espaciais (RF-CEN-04) são fase 2. **Decisão:** no MVP, "área" é filtro por identificador.
+3. **Revogação na borda desconectada.** O critério do RF-DIS-02 exige recusar a credencial revogada "na conexão seguinte" também nos nós de borda, o que é impossível enquanto a borda está sem link. **Decisão:** lista de revogação aplicada na reconexão, com mitigação na central ([ADR-0015](adr/0015-revogacao-de-credencial-na-borda.md)).
+4. **Casos de uso que dependem de requisitos Importantes.** UC-02 depende do SMS (RF-APP-05), e UC-03 depende de NGSI-LD (RF-INT-05) e do sandbox (RF-INT-06), todos Importantes. **Decisão:** na demonstração, o UC-02 usa o adaptador de SMS falso ([ADR-0012](adr/0012-sms-pela-central.md)), e o UC-03 mostra só o adaptador em contêiner (RF-INT-03); NGSI-LD e sandbox ficam documentados.
 
-## Decisões em aberto (ADRs a escrever)
-
-| # | Decisão | Requisito | Recomendação | ADR |
-|---|---|---|---|---|
-| 1 | Relógio da borda | | Borda carimba a hora de recepção quando o dispositivo não envia `timestamp` confiável; hora mantida por NTP ou GPS quando possível. | |
-| 2 | Online/offline com borda sem sincronizar | RF-DIS-06 | Terceiro estado "desconhecido". | |
-| 3 | Janela de deduplicação | RF-ING-08 | Guardar `id_mensagem` por pelo menos 7 dias. | |
-| 4 | Envio de SMS | RF-APP-05 | Pela central, via provedor; modem GSM na borda como evolução. | |
-| 5 | Dados atrasados e agregados | RF-ING-04 | Continuous aggregates do Timescale; regras só avaliam dado atual. | |
-| 6 | Chave do SQLCipher na borda | RF-SEG-05 | A definir (chave no mesmo disco não cumpre o critério). | |
-| 7 | Revogação de credencial na borda | RF-DIS-02 | Lista de revogação sincronizada, aplicada após reconectar; documentar a limitação. | |
-| 8 | Energia | RNF-07 | SSD em vez de cartão SD; SQLite em modo WAL. | |
+As decisões de arquitetura estão em [adr/README.md](adr/README.md).

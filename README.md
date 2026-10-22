@@ -13,8 +13,8 @@ Trabalho da disciplina de Internet das Coisas (UniEVANGÉLICA). Implementa a pla
 ## Arquitetura
 
 - **Núcleo:** Python 3.12 + FastAPI, com arquitetura hexagonal. O `dominio/` não importa framework, driver MQTT nem banco; tudo entra e sai por `portas/`, implementadas em `adaptadores/`.
-- **Uma imagem, dois ambientes:** o `servico-core` gera uma única imagem Docker. A central usa PostgreSQL + TimescaleDB + PostGIS; a borda usa SQLite cifrado.
-- **Infraestrutura aberta:** Mosquitto (MQTT), Redis (último estado), Grafana (painéis), Keycloak (OIDC, papéis, MFA) e Prometheus (métricas).
+- **Uma imagem, dois ambientes:** o `servico-core` gera uma única imagem Docker. A central usa PostgreSQL + TimescaleDB; a borda usa SQLite cifrado.
+- **Infraestrutura aberta e enxuta:** Mosquitto (MQTT), PostgreSQL + TimescaleDB (séries, catálogo e último estado), Grafana (painéis provisionados) e endpoint `/metrics` no formato Prometheus. Autenticação por token de dispositivo e chave de API com papéis. Redis, Keycloak, servidor Prometheus e PostGIS ficam como evolução ([ADR-0007](docs/adr/0007-infraestrutura-aberta.md)).
 - **Pipeline de ingestão:** autenticar → validar contra o JSON Schema → deduplicar por `id_mensagem` → enriquecer com perfil, domínio, local e área → ordenar pelo `timestamp` da medição → persistir. Mensagens rejeitadas vão para a DLQ com o motivo.
 
 ## Estrutura do repositório
@@ -37,10 +37,9 @@ plataforma-iot-integrada/
 │   ├── javascript/
 │   └── java/
 ├── infra/
-│   ├── central/            # compose: Mosquitto, Timescale, Grafana, Keycloak
+│   ├── central/            # compose: Mosquitto, TimescaleDB, Grafana, servico-core
 │   ├── borda/              # compose: Mosquitto, servico-core com SQLite
-│   ├── grafana/            # painéis provisionados
-│   └── keycloak/           # realm exportado
+│   └── grafana/            # painéis provisionados
 ├── testes-sistema/
 │   ├── desconexao/         # injeta 72 h de mensagens retroativas
 │   └── carga/              # 1.000 msg/s
@@ -59,8 +58,8 @@ plataforma-iot-integrada/
 | 1 | Domínio novo ao vivo | Criar o domínio `recursos_hidricos` e um perfil de reservatório só por configuração, sem tocar no código nem reiniciar serviços. | UC-06, RNF-08 |
 | 2 | Rural com borda | Simuladores de solo e silo publicam no Mosquitto da borda. A regra local liga a irrigação sem depender da central. | UC-01, UC-02, RF-EDG-03 |
 | 3 | Corte de link | Desconectar a borda da central e continuar gerando dados. Ao religar, o histórico chega completo, sem duplicatas e na hora da medição. | RF-ING-08, RF-EDG-01/02 |
-| 4 | Urbano nível 2 | Um simulador envia JSON legado; o adaptador `ar-urbano`, em contêiner próprio, traduz para a mensagem canônica sem reiniciar o núcleo. | UC-03 |
-| 5 | Três linguagens | Simuladores em Python, JavaScript e Java usando só bibliotecas genéricas de MQTT e HTTP. | Critério 9.3 |
+| 4 | Urbano nível 2 | Um simulador envia JSON legado; o adaptador `ar-urbano`, em contêiner próprio, traduz para a mensagem canônica sem reiniciar o núcleo. | UC-03, RF-INT-03 |
+| 5 | Três linguagens | Simuladores em Python, JavaScript e Java usando só bibliotecas genéricas de MQTT e HTTP. | RF-INT-02, critério 9.3 |
 | 6 | Carga | Script a 1.000 msg/s com a latência acompanhada no Grafana. | RNF-01, RNF-02 |
 
 **Sobre as 72 horas de desconexão:** na demonstração o corte dura poucos minutos. As 72 h exigidas são comprovadas por um teste automatizado ([testes-sistema/desconexao](testes-sistema/desconexao)) que injeta mensagens com timestamps retroativos e verifica que não houve perda nem duplicação.
@@ -73,16 +72,18 @@ plataforma-iot-integrada/
 - Integração demonstrada em pelo menos três linguagens.
 - Teste de carga comprovando RNF-01 e RNF-02.
 
-## Ordem de construção
+## Plano de construção
 
-- [ ] **Semana 1:** contratos, repositório, Compose, CI, ADRs iniciais, modelo do catálogo.
-- [ ] **Semana 2:** catálogo e cadastro (CEN, DIS), Keycloak, `tenant_id` e papéis.
-- [ ] **Semana 3:** pipeline de ingestão central: validação, deduplicação, DLQ, ordenação, séries e último estado.
-- [ ] **Semana 4:** regras e alarmes (PRO), painéis no Grafana.
-- [ ] **Semana 5:** borda: fila SQLite, sincronização em lotes, regra local, teste de desconexão.
-- [ ] **Semana 6:** adaptador urbano, simuladores em 3 linguagens, teste de carga, documentação e ensaio da demo.
+Entrega na sexta-feira, 23/10/2026, à noite. As funcionalidades congelam por volta das 18h; o restante do tempo é para documentação e ensaio.
 
-Se o prazo apertar, o adaptador urbano e o teste de carga passam a ser apenas documentados. Não são cortados: o pipeline de ingestão, a borda com sincronização e o domínio novo ao vivo.
+- [ ] **Base:** estrutura, contratos (JSON Schema, AsyncAPI, OpenAPI), Compose da central e da borda, CI que valida os contratos.
+- [ ] **Núcleo central:** catálogo e cadastro com `tenant_id`, token por dispositivo, pipeline de ingestão por HTTP e MQTT, último estado, `/api/v1/ingestao` e `/api/v1/ingestao/lote`, paginação padronizada.
+- [ ] **Regras e alarmes:** ações por Strategy (alarme, notificar em log, comando, webhook, publicar em tópico), regras de limite e de janela de tempo, ciclo de vida do alarme, dado atrasado sem alarme.
+- [ ] **Borda:** fila SQLite, sincronização em lotes com remoção só após confirmação, regra local, teste de desconexão de 72 h.
+- [ ] **Integração e demonstração:** simuladores em três linguagens (em contêineres), adaptador urbano, painéis do Grafana, `/metrics`, logs JSON, domínio novo por API.
+- [ ] **Fechamento:** rastreabilidade com status e evidências, `docs/arquitetura.md`, README, teste de carga se houver tempo, ensaio da demo do zero.
+
+Se o tempo apertar, são cortados nesta ordem e passam a ser documentados: PostGIS, teste de carga, painéis elaborados, adaptador urbano e cifragem da fila. Não são cortados: o pipeline de ingestão, a borda com sincronização e o teste de desconexão, o domínio novo só por configuração e os simuladores em três linguagens.
 
 ## Convenções
 
@@ -96,4 +97,4 @@ Se o prazo apertar, o adaptador urbano e o teste de carga passam a ser apenas do
 
 ## Como executar
 
-Ainda não há serviços executáveis. Os arquivos `infra/central/compose.yaml` e `infra/borda/compose.yaml` entram na semana 1, e esta seção será atualizada com os comandos.
+A infraestrutura da central e da borda sobe com Docker Compose. Os passos, as portas e o corte de link estão em [infra/README.md](infra/README.md). O `servico-core` ainda não tem imagem e entra nos Compose quando o esqueleto existir.
