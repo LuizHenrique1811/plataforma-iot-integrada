@@ -20,22 +20,22 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-CEN-01 | Catálogo de domínios configurável por inquilino | Gestor cria o domínio "pecuaria" pela API ou painel, sem alterar código | implementar | pendente | [ADR-0003](adr/0003-catalogo-configuravel.md) |
-| RF-CEN-02 | Perfis de dispositivo: grandezas, unidades, faixa válida e intervalo esperado de envio | Medida fora da faixa é marcada como suspeita; perfil reutilizável entre projetos | implementar | parcial | [ADR-0003](adr/0003-catalogo-configuravel.md), `servico-core/testes/test_pipeline.py` |
-| RF-CEN-03 | Hierarquia inquilino → local → área → dispositivo | A mesma hierarquia representa um bairro com praças e uma fazenda com talhões | implementar | pendente | |
+| RF-CEN-01 | Catálogo de domínios configurável por inquilino | Gestor cria o domínio "pecuaria" pela API ou painel, sem alterar código | implementar | implementado | [ADR-0003](adr/0003-catalogo-configuravel.md), `servico-core/testes/test_catalogo.py`, `servico-core/testes/test_api_catalogo.py` |
+| RF-CEN-02 | Perfis de dispositivo: grandezas, unidades, faixa válida e intervalo esperado de envio | Medida fora da faixa é marcada como suspeita; perfil reutilizável entre projetos | implementar | implementado | [ADR-0003](adr/0003-catalogo-configuravel.md), `servico-core/testes/test_pipeline.py`, `servico-core/testes/test_api_catalogo.py` |
+| RF-CEN-03 | Hierarquia inquilino → local → área → dispositivo | A mesma hierarquia representa um bairro com praças e uma fazenda com talhões | implementar | implementado | `servico-core/testes/test_catalogo.py`, `servico-core/testes/test_postgres.py` |
 
 ### ING · Conectividade e ingestão
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-ING-01 | Telemetria via MQTT 3.1.1 e 5.0 sobre TLS | Dispositivo autenticado publica no tópico canônico; mensagem persistida em até 2 s | implementar | pendente | [ADR-0008](adr/0008-pipeline-de-ingestao.md) |
+| RF-ING-01 | Telemetria via MQTT 3.1.1 e 5.0 sobre TLS | Dispositivo autenticado publica no tópico canônico; mensagem persistida em até 2 s | implementar | parcial | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_mqtt.py` |
 | RF-ING-02 | Telemetria via HTTPS (`POST /api/v1/ingestao`) | Válida retorna 202; inválida retorna 400 com a lista de erros | implementar | implementado | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_api_ingestao.py` |
 | RF-ING-03 | Lotes (`POST /api/v1/ingestao/lote`) com resultado por mensagem | Lote de 5.000 com 3 inválidas grava 4.997 e informa as 3 recusadas | implementar | implementado | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_api_ingestao.py` |
 | RF-ING-04 | Aceitar dados atrasados, armazenando pelo horário da medição | Medição de 48 h atrás entra na posição correta e não gera alarme como se fosse atual | implementar | parcial | [ADR-0013](adr/0013-dados-atrasados-e-agregados.md), `servico-core/testes/test_pipeline.py` |
 | RF-ING-06 | Validar cada mensagem contra o JSON Schema da sua versão | Mensagem fora do esquema vai para a DLQ, com o motivo | implementar | implementado | `contratos/json-schema/`, `servico-core/testes/test_pipeline.py`, `servico-core/testes/test_postgres.py` |
 | RF-ING-08 | Descartar mensagens duplicadas pelo `id_mensagem` | Mensagem reenviada pela borda com o mesmo id é armazenada uma única vez | implementar | implementado | [ADR-0011](adr/0011-janela-de-deduplicacao.md), `servico-core/testes/test_postgres.py` |
 
-- RF-ING-01: falta o consumidor MQTT do `servico-core`. O listener TLS e a autenticação no Mosquitto também estão pendentes; hoje os Compose usam a porta 1883 sem TLS.
+- RF-ING-01: o consumidor MQTT assina os tópicos canônicos com sessão persistente e confirma cada mensagem só depois de gravar; o teste com um Mosquitto real exige gravação em até 2 s. Faltam o listener TLS e a autenticação no broker (os Compose usam a porta 1883 sem TLS).
 - RF-ING-04: a medição atrasada entra pelo horário da medição e é marcada como não atual (`atual = false`). Falta o motor de regras ignorar essas medições.
 
 ### EDG · Borda e conectividade limitada
@@ -49,12 +49,12 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-DIS-01 | Cadastro com perfil, domínio, local, área, fabricante, firmware e inquilino | Dispositivo cadastrado pela API **e** pelo painel aparece com todos os atributos | implementar (API); simplificar (painel) | pendente | [ADR-0019](adr/0019-painel-de-cadastro.md) |
-| RF-DIS-02 | Credenciais únicas por dispositivo (X.509 ou token), com revogação | Credencial revogada é recusada na conexão seguinte, na central e nos nós de borda | simplificar | parcial | [ADR-0015](adr/0015-revogacao-de-credencial-na-borda.md), `servico-core/testes/test_postgres.py` |
-| RF-DIS-06 | Online/offline pelo intervalo esperado do perfil | Sensor que envia de hora em hora não aparece offline após 5 min sem dados | implementar | pendente | [ADR-0010](adr/0010-estado-desconhecido.md) |
+| RF-DIS-01 | Cadastro com perfil, domínio, local, área, fabricante, firmware e inquilino | Dispositivo cadastrado pela API **e** pelo painel aparece com todos os atributos | implementar (API); simplificar (painel) | simplificado | [ADR-0019](adr/0019-painel-de-cadastro.md), `servico-core/testes/test_api_catalogo.py` |
+| RF-DIS-02 | Credenciais únicas por dispositivo (X.509 ou token), com revogação | Credencial revogada é recusada na conexão seguinte, na central e nos nós de borda | simplificar | parcial | [ADR-0015](adr/0015-revogacao-de-credencial-na-borda.md), `servico-core/testes/test_api_catalogo.py`, `servico-core/testes/test_postgres.py` |
+| RF-DIS-06 | Online/offline pelo intervalo esperado do perfil | Sensor que envia de hora em hora não aparece offline após 5 min sem dados | implementar | implementado | [ADR-0010](adr/0010-estado-desconhecido.md), `servico-core/testes/test_consultas.py` |
 
 - RF-DIS-01: o critério pede cadastro pela API **e** por um painel. O painel é a documentação interativa da API (Swagger UI), sem interface web própria.
-- RF-DIS-02: token por dispositivo é uma das opções do próprio requisito. A simplificação está na borda, que só aplica revogações novas depois de reconectar. Já funcionam: token guardado só como hash, token revogado recusado na autenticação e medição posterior à revogação recusada no pipeline. Faltam a emissão e a revogação pela API.
+- RF-DIS-02: token por dispositivo é uma das opções do próprio requisito. Na central já funcionam a emissão no cadastro (só o hash é guardado), a revogação pela API e a recusa na conexão seguinte, além da recusa no pipeline de medições posteriores à revogação. Falta a borda aplicar a lista de revogação ao reconectar (ADR-0015).
 
 ### INT · Integração de projetos existentes
 
@@ -81,11 +81,11 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-DAD-01 | Séries temporais com consulta por dispositivo, grandeza, área e intervalo | Consulta de 24 h de um dispositivo responde em até 1 s | implementar | parcial | `servico-core/adaptadores/postgres/migracoes/001_inicial.sql` |
-| RF-DAD-02 | Último valor de cada grandeza de cada dispositivo | Último estado disponível sem consultar o histórico | implementar | parcial | [ADR-0017](adr/0017-ultimo-estado-no-postgresql.md), `servico-core/testes/test_postgres.py` |
+| RF-DAD-01 | Séries temporais com consulta por dispositivo, grandeza, área e intervalo | Consulta de 24 h de um dispositivo responde em até 1 s | implementar | implementado | `servico-core/testes/test_consultas.py`, `servico-core/testes/test_postgres.py` |
+| RF-DAD-02 | Último valor de cada grandeza de cada dispositivo | Último estado disponível sem consultar o histórico | implementar | implementado | [ADR-0017](adr/0017-ultimo-estado-no-postgresql.md), `servico-core/testes/test_consultas.py` |
 | RF-DAD-05 | Anonimizar ou pseudonimizar dados pessoais antes de armazenar ou publicar | Nenhum dado pessoal identificável aparece na API pública | simplificar | pendente | |
 
-- RF-DAD-01 e RF-DAD-02: as tabelas `medicoes` (hypertable) e `ultimo_estado` existem e são gravadas pelo pipeline. Faltam as consultas pela API.
+- RF-DAD-01: `GET /api/v1/dispositivos/{id}/telemetria` filtra por grandeza e intervalo, pelo horário da medição. A tabela `medicoes` também guarda a área de cada medição, para consultas por área no Grafana; a API não tem uma rota de consulta por área.
 - RF-DAD-05: a simplificação ainda não está detalhada. Proposta: o perfil marca quais campos são pessoais, e esses campos são pseudonimizados antes de gravar e omitidos na API pública.
 
 ### APP · Aplicação e serviços
@@ -93,19 +93,19 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RF-APP-01 | API REST versionada e documentada em OpenAPI 3 | Documentação interativa gerada a partir do contrato e testada no pipeline | implementar | parcial | [ADR-0019](adr/0019-painel-de-cadastro.md), `servico-core/testes/test_contratos.py` |
-| RF-APP-07 | Paginação, filtros e ordenação padronizados nas listagens | Todas as listagens aceitam os mesmos parâmetros de paginação | implementar | pendente | |
+| RF-APP-07 | Paginação, filtros e ordenação padronizados nas listagens | Todas as listagens aceitam os mesmos parâmetros de paginação | implementar | implementado | `servico-core/testes/test_api_catalogo.py` |
 
-- RF-APP-01: `/docs` é gerado de `contratos/openapi.yaml`, o contrato é validado no CI e um teste confere que toda rota implementada está no contrato. Faltam as rotas de catálogo, consultas, regras e alarmes.
-- RF-APP-07: os parâmetros `pagina`, `tamanho` e `ordenar` e o envelope `Pagina` já estão no contrato; faltam as listagens.
+- RF-APP-01: `/docs` é gerado de `contratos/openapi.yaml`, o contrato é validado no CI, os corpos das requisições são validados pelos schemas do próprio contrato e um teste confere que toda rota implementada está no contrato. Faltam as rotas de regras e alarmes.
+- RF-APP-07: todas as listagens implementadas aceitam `pagina`, `tamanho` e `ordenar` e respondem no envelope `Pagina`; as de regras e alarmes vão reutilizar o mesmo mecanismo.
 
 ### SEG · Segurança e acesso
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RF-SEG-01 | Autenticação por OpenID Connect, com segundo fator para administradores | Administrador sem segundo fator não acessa o painel | documentar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
-| RF-SEG-02 | Papéis: administrador, gestor, operador, integrador e leitor | Operador não consegue alterar regras nem dispositivos | simplificar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-02 | Papéis: administrador, gestor, operador, integrador e leitor | Operador não consegue alterar regras nem dispositivos | simplificar | simplificado | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md), `servico-core/testes/test_catalogo.py`, `servico-core/testes/test_api_catalogo.py` |
 | RF-SEG-03 | Isolar os dados de cada inquilino | Usuário de um inquilino não vê dados de outro, nem pela API | simplificar | parcial | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md), `servico-core/testes/test_pipeline.py` |
-| RF-SEG-04 | Restringir cada dispositivo aos próprios tópicos MQTT, na central e na borda | Publicação em tópico de outro dispositivo é recusada | simplificar | pendente | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md) |
+| RF-SEG-04 | Restringir cada dispositivo aos próprios tópicos MQTT, na central e na borda | Publicação em tópico de outro dispositivo é recusada | simplificar | parcial | [ADR-0018](adr/0018-autenticacao-sem-keycloak.md), `servico-core/testes/test_mqtt.py` |
 | RF-SEG-05 | Credencial própria para nós de borda e fila local cifrada | Disco retirado de um nó de borda não revela os dados guardados | simplificar | pendente | [ADR-0014](adr/0014-chave-da-fila-da-borda.md) |
 
 Simplificações previstas, sem Keycloak ([ADR-0018](adr/0018-autenticacao-sem-keycloak.md)):
@@ -127,7 +127,8 @@ Simplificação prevista: endpoint `/metrics` no formato Prometheus, sem subir o
 
 - RF-OBS-01: `/metrics` expõe mensagens por entrada, situação e motivo de rejeição, e um histograma do tempo de ingestão.
 - RF-OBS-02: os logs JSON com `correlation_id` já saem da central; falta a borda.
-- RF-SEG-03 (acima): o dispositivo só é procurado no inquilino da credencial, o que já impede um inquilino de gravar dados em outro. Falta o row-level security nas consultas.
+- RF-SEG-03 (acima): toda consulta e toda gravação filtram pelo inquilino da credencial, e os testes mostram um inquilino sem acesso ao catálogo e aos dispositivos de outro. Falta o row-level security como segunda barreira no banco.
+- RF-SEG-04 (acima): enquanto a ACL do broker não existe, o `servico-core` recusa (DLQ, motivo `topico_divergente` ou `dispositivo_divergente`) mensagens publicadas no tópico de outro dispositivo, local ou domínio, que é a alternativa prevista no ADR-0018.
 
 ## Requisitos não funcionais
 
@@ -144,7 +145,7 @@ O documento não atribui prioridade aos RNFs.
 | RNF-07 | Robustez a falta de energia | Queda de energia não corrompe fila nem configuração | implementar WAL; documentar hardware | pendente | [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md) |
 | RNF-08 | Neutralidade de cenário | Domínio, perfil ou modelo novo só por configuração | implementar | pendente | [ADR-0003](adr/0003-catalogo-configuravel.md), UC-06 |
 | RNF-09 | Escalabilidade | Serviços centrais sem estado, escaláveis horizontalmente | implementar | implementado | [ADR-0006](adr/0006-uma-imagem-dois-ambientes.md) |
-| RNF-10 | Durabilidade | Nenhuma mensagem confirmada (ACK) é perdida | implementar | parcial | [ADR-0008](adr/0008-pipeline-de-ingestao.md), [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md) |
+| RNF-10 | Durabilidade | Nenhuma mensagem confirmada (ACK) é perdida | implementar | parcial | [ADR-0008](adr/0008-pipeline-de-ingestao.md), [ADR-0016](adr/0016-energia-e-armazenamento-da-borda.md), `servico-core/testes/test_mqtt.py` |
 | RNF-11 | Segurança | TLS 1.2+ em toda interface externa; dados e segredos cifrados em repouso | simplificar | pendente | |
 | RNF-12 | Privacidade | LGPD: minimização, finalidade e registro das operações | simplificar | pendente | |
 | RNF-13 | Independência de linguagem | 100% das interfaces descritas por contratos abertos | implementar | implementado | [ADR-0002](adr/0002-integracao-por-contratos-abertos.md), `.github/workflows/ci.yaml` |
@@ -174,7 +175,7 @@ O documento não atribui prioridade aos RNFs.
 | UC-01 · Fazenda com link via satélite | RF-CEN-03, RF-CEN-04, RF-EDG-01 a 03, RF-ING-03, RF-ING-04 | 2 e 3 | pendente | |
 | UC-02 · Alarme de temperatura em silo | RF-CEN-02, RF-PRO-02, RF-PRO-05, RF-APP-05 | 2 | pendente | |
 | UC-03 · Qualidade do ar urbana (nível 2) | RF-INT-03, RF-INT-05, RF-INT-06, RF-ING-06 | 4 | pendente | |
-| UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | pendente | |
+| UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | implementado | `servico-core/testes/test_api_catalogo.py` (`test_uc06_cenario_novo_de_reservatorios_sem_programar`) |
 
 ## Critérios de aceite do MVP (seção 9.3)
 
@@ -182,7 +183,7 @@ O documento não atribui prioridade aos RNFs.
 |---|---|---|
 | Um projeto urbano e um rural integrados; o rural com nó de borda | pendente | |
 | Link da borda cortado por 72 h sem perda nem duplicação após a reconexão | pendente | |
-| Um domínio novo criado só por configuração (RNF-08) | pendente | |
+| Um domínio novo criado só por configuração (RNF-08) | implementado | `servico-core/testes/test_api_catalogo.py` (`test_uc06_cenario_novo_de_reservatorios_sem_programar`) |
 | Integração demonstrada em pelo menos três linguagens | pendente | |
 | Teste de carga comprovando RNF-01 e RNF-02 em ambiente de homologação | pendente | |
 

@@ -77,7 +77,7 @@ plataforma-iot-integrada/
 Entrega na sexta-feira, 23/10/2026, à noite. As funcionalidades congelam por volta das 18h; o restante do tempo é para documentação e ensaio.
 
 - [x] **Base:** estrutura, contratos (JSON Schema, AsyncAPI, OpenAPI), Compose da central e da borda, CI que valida os contratos.
-- [ ] **Núcleo central:** catálogo e cadastro com `tenant_id`, token por dispositivo, pipeline de ingestão por HTTP e MQTT, último estado, `/api/v1/ingestao` e `/api/v1/ingestao/lote`, paginação padronizada.
+- [x] **Núcleo central:** catálogo e cadastro com `tenant_id`, token por dispositivo, pipeline de ingestão por HTTP e MQTT, último estado, `/api/v1/ingestao` e `/api/v1/ingestao/lote`, paginação padronizada.
 - [ ] **Regras e alarmes:** ações por Strategy (alarme, notificar em log, comando, webhook, publicar em tópico), regras de limite e de janela de tempo, ciclo de vida do alarme, dado atrasado sem alarme.
 - [ ] **Borda:** fila SQLite, sincronização em lotes com remoção só após confirmação, regra local, teste de desconexão de 72 h.
 - [ ] **Integração e demonstração:** simuladores em três linguagens (em contêineres), adaptador urbano, painéis do Grafana, `/metrics`, logs JSON, domínio novo por API.
