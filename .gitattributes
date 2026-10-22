@@ -1,0 +1,10 @@
+# Fim de linha LF no repositório: scripts e arquivos de configuração rodam em contêineres Linux.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.ico binary

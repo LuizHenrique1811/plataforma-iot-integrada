@@ -1,0 +1,40 @@
+# Segredos e configuração local (Twelve-Factor: nada de segredo no repositório)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# JavaScript
+node_modules/
+
+# Java
+target/
+build/
+.gradle/
+*.class
+
+# Dados locais (fila da borda, bancos de teste)
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# Editores e sistema
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
