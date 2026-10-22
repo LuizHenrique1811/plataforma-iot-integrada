@@ -7,6 +7,7 @@
 // Uso: java Simulador.java            (envia a cada INTERVALO_S segundos)
 //      java Simulador.java --amostra  (imprime uma mensagem e sai)
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -36,6 +37,16 @@ public class Simulador {
         return nivel >= 95 ? 8 : Math.min(100, nivel + 6 + Math.random() * 4);
     }
 
+    // Reenvia uma vez a mesma requisição se a conexão reaproveitada já tinha sido fechada pelo servidor.
+    // É seguro: o id_mensagem é o mesmo e a plataforma descarta a cópia (RF-ING-08).
+    static HttpResponse<String> enviar(HttpClient http, HttpRequest requisicao) throws Exception {
+        try {
+            return http.send(requisicao, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException conexaoFechada) {
+            return http.send(requisicao, HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         String api = ambiente("API_URL", "http://host.docker.internal:8000");
         String token = ambiente("TOKEN_LIXEIRA", "");
@@ -61,7 +72,7 @@ public class Simulador {
                 .POST(HttpRequest.BodyPublishers.ofString(mensagem(dispositivo, nivel, Instant.now())))
                 .build();
             try {
-                HttpResponse<String> resposta = http.send(requisicao, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> resposta = enviar(http, requisicao);
                 System.out.printf(Locale.ROOT, "%s nivel=%.1f%% -> HTTP %d %s%n",
                     Instant.now(), nivel, resposta.statusCode(), resposta.body());
             } catch (Exception erro) {
