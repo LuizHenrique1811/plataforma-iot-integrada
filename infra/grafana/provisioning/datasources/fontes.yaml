@@ -1,0 +1,20 @@
+# Fontes de dados provisionadas no Grafana da central.
+# As credenciais vêm de variáveis de ambiente do contêiner (infra/central/compose.yaml).
+# Não há servidor Prometheus (ADR-0007): a latência é lida das colunas de recepção e persistência no TimescaleDB.
+apiVersion: 1
+
+datasources:
+  - name: TimescaleDB
+    type: grafana-postgresql-datasource
+    uid: timescaledb
+    access: proxy
+    url: timescaledb:5432
+    user: ${POSTGRES_USER}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: true
+    isDefault: true

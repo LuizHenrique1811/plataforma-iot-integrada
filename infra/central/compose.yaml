@@ -1,0 +1,85 @@
+# Ambiente central da Plataforma IoT Integrada (ADR-0006, ADR-0007).
+# Uso: copie .env.example para .env, preencha as senhas e rode `docker compose up -d` nesta pasta.
+name: iot-central
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-dados:/mosquitto/data
+
+  # Séries temporais, catálogo e último estado (ADR-0017). As extensões são criadas pelas migrações do servico-core.
+  # Use a imagem sem sufixo -oss: os continuous aggregates (ADR-0013) não existem na variante -oss.
+  # PostGIS fica para depois; para ativá-lo, troque pela imagem timescale/timescaledb-ha (ADR-0007).
+  timescaledb:
+    image: timescale/timescaledb:2.31.0-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-iot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
+      POSTGRES_DB: ${POSTGRES_DB:-iot}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:5432:5432"
+    volumes:
+      - timescaledb-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:12.4.13
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Defina GRAFANA_ADMIN_PASSWORD no arquivo .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Lidas pelo provisionamento da fonte de dados TimescaleDB (infra/grafana/provisioning).
+      # Pendente: trocar por um usuário somente leitura quando o esquema existir.
+      POSTGRES_USER: ${POSTGRES_USER:-iot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
+      POSTGRES_DB: ${POSTGRES_DB:-iot}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:3000:3000"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-dados:/var/lib/grafana
+    depends_on:
+      - timescaledb
+
+  # servico-core no papel central: entra quando a imagem existir. É a mesma imagem da borda (ADR-0006).
+  # Nomes das variáveis provisórios; serão definidos no esqueleto do serviço.
+  # servico-core:
+  #   image: plataforma-iot/servico-core:dev
+  #   build: ../../servico-core
+  #   restart: unless-stopped
+  #   environment:
+  #     PAPEL: central
+  #     BANCO_URL: postgresql://${POSTGRES_USER:-iot}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB:-iot}
+  #     MQTT_URL: mqtt://mosquitto:1883
+  #   ports:
+  #     - "${BIND_ADDR:-127.0.0.1}:8000:8000"   # API, Swagger UI (ADR-0019) e /metrics (RF-OBS-01)
+  #   networks:
+  #     default:
+  #     link:
+  #       aliases: [central]   # nome pelo qual a borda encontra a central na rede iot-link
+  #   depends_on:
+  #     timescaledb:
+  #       condition: service_healthy
+
+volumes:
+  mosquitto-dados:
+  timescaledb-dados:
+  grafana-dados:
+
+# Rede compartilhada com a borda, por onde passa a sincronização em lotes.
+# Ativar junto com o servico-core; criar uma vez com `docker network create iot-link` (ver infra/README.md).
+# networks:
+#   link:
+#     name: iot-link
+#     external: true

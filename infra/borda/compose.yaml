@@ -1,0 +1,53 @@
+# Nó de borda da Plataforma IoT Integrada (ADR-0006).
+# Uso: copie .env.example para .env e rode `docker compose up -d` nesta pasta.
+# As portas são diferentes das da central para os dois ambientes rodarem na mesma máquina.
+name: iot-borda
+
+services:
+  # Ingestão MQTT local (RF-EDG-01). Dispositivos e simuladores publicam aqui.
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:1884:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-dados:/mosquitto/data
+
+  # servico-core no papel borda: entra quando a imagem existir. É a mesma imagem da central (ADR-0006).
+  # Nomes das variáveis provisórios; serão definidos no esqueleto do serviço.
+  # servico-core:
+  #   image: plataforma-iot/servico-core:dev
+  #   build: ../../servico-core
+  #   restart: unless-stopped
+  #   environment:
+  #     PAPEL: borda
+  #     BANCO_URL: sqlite:////dados/fila.db          # SQLite cifrado com SQLCipher (RF-SEG-05)
+  #     CHAVE_FILA_ARQUIVO: /run/secrets/chave_fila  # chave fora do volume de dados (ADR-0014)
+  #     MQTT_URL: mqtt://mosquitto:1883
+  #     CENTRAL_URL: http://central:8000             # sincronização por POST /api/v1/ingestao/lote (RF-EDG-02)
+  #   ports:
+  #     - "${BIND_ADDR:-127.0.0.1}:8001:8000"        # ingestão HTTP local (RF-EDG-01)
+  #   volumes:
+  #     - servico-core-dados:/dados
+  #   secrets:
+  #     - chave_fila
+  #   networks:
+  #     - default
+  #     - link                                       # desconectar esta rede simula o corte de link
+  #   depends_on:
+  #     - mosquitto
+
+volumes:
+  mosquitto-dados:
+  # servico-core-dados:
+
+# Ativar junto com o servico-core (ver infra/README.md).
+# networks:
+#   link:
+#     name: iot-link
+#     external: true
+#
+# secrets:
+#   chave_fila:
+#     file: ${CHAVE_FILA_ARQUIVO:?Defina CHAVE_FILA_ARQUIVO no .env com o caminho da chave fora do volume de dados}
