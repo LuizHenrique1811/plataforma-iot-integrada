@@ -1,0 +1,16 @@
+# Adaptador plugável das estações de qualidade do ar (UC-03). Sobe e desce sem reiniciar o núcleo:
+#   docker compose -f adaptadores-plugaveis/ar-urbano/compose.yaml up -d --build
+name: iot-adaptador-ar-urbano
+
+services:
+  ar-urbano:
+    build: .
+    restart: unless-stopped
+    environment:
+      MQTT_URL: ${MQTT_URL:-mqtt://host.docker.internal:1883}   # broker da central, pela porta publicada
+      INQUILINO: ${INQUILINO:-semma}
+      SITE: ${SITE:-centro}
+      DOMINIO: ${DOMINIO:-ambiente}
+      TOPICO_LEGADO: legado/estacoes/+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
