@@ -7,6 +7,7 @@
 O asyncapi.yaml é validado pela CLI oficial do AsyncAPI, que roda em Node (ver README).
 
 Uso: python contratos/validar.py
+     python contratos/validar.py --mensagens < amostras.jsonl   (uma mensagem canônica por linha)
 Dependências: jsonschema[format-nongpl], pyyaml, openapi-spec-validator.
 """
 
@@ -66,7 +67,33 @@ def validar_openapi_yaml() -> list[str]:
     return []
 
 
+def validar_mensagens(linhas) -> list[str]:
+    """Valida mensagens canônicas, uma por linha (ex.: amostras dos simuladores das três linguagens)."""
+    validador = Draft7Validator(
+        carregar_json(RAIZ / "json-schema" / "mensagem-canonica-1.0.json"),
+        format_checker=Draft7Validator.FORMAT_CHECKER,
+    )
+    falhas, total = [], 0
+    for numero, linha in enumerate(linhas, start=1):
+        if not linha.strip():
+            continue
+        total += 1
+        erros = list(validador.iter_errors(json.loads(linha)))
+        if erros:
+            falhas.append(f"mensagem da linha {numero}: {erros[0].message}")
+    if total == 0:
+        falhas.append("nenhuma mensagem recebida")
+    else:
+        print(f"{total} mensagens validadas contra a mensagem canônica 1.0.")
+    return falhas
+
+
 def main() -> int:
+    if "--mensagens" in sys.argv:
+        falhas = validar_mensagens(sys.stdin)
+        for falha in falhas:
+            print(f"FALHA  {falha}")
+        return 1 if falhas else 0
     falhas = validar_schemas() + validar_exemplos() + validar_openapi_yaml()
     for falha in falhas:
         print(f"FALHA  {falha}")

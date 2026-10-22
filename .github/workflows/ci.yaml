@@ -18,8 +18,8 @@ jobs:
         run: pip install "jsonschema[format-nongpl]==4.26.0" pyyaml==6.0.3 openapi-spec-validator==0.9.0 ruff==0.17.1
       - name: Análise estática (RNF-15)
         run: |
-          ruff check servico-core contratos testes-sistema
-          ruff format --check servico-core contratos testes-sistema
+          ruff check servico-core contratos testes-sistema adaptadores-plugaveis simuladores demo
+          ruff format --check servico-core contratos testes-sistema adaptadores-plugaveis simuladores demo
       - name: JSON Schema, exemplos e OpenAPI
         run: python contratos/validar.py
       - uses: actions/setup-node@v4
@@ -78,3 +78,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build da imagem única (central e borda)
         run: docker build -f servico-core/Dockerfile --target final -t plataforma-iot/servico-core:ci .
+
+  integracao:
+    name: Adaptador e simuladores em três linguagens (RF-INT-02, RF-INT-03)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Dependências
+        run: pip install "jsonschema[format-nongpl]==4.26.0" pyyaml==6.0.3 openapi-spec-validator==0.9.0 pytest==9.1.1
+      - name: Adaptador ar-urbano (saída validada contra o contrato)
+        run: pytest -q adaptadores-plugaveis/ar-urbano/testes
+      - name: Simulador JavaScript (testes nativos do Node)
+        run: node --test simuladores/javascript/simulador.test.mjs
+      - name: Mensagens das três linguagens validadas contra a mensagem canônica
+        run: |
+          {
+            python simuladores/python/simulador.py --amostra
+            node simuladores/javascript/simulador.mjs --amostra
+            java simuladores/java/Simulador.java --amostra
+          } | python contratos/validar.py --mensagens

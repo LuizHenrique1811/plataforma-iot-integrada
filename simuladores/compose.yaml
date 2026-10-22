@@ -1,0 +1,55 @@
+# Simuladores das três linguagens, em contêineres (sem Node nem JDK na máquina).
+# Cada um usa só bibliotecas genéricas de MQTT ou HTTP e o contrato canônico (RF-INT-02).
+#   docker compose -f simuladores/compose.yaml up -d --build rural-python
+# Os tokens dos dispositivos HTTP vêm de demo/.env.demo, gerado por demo/preparar.py e demo/dominio_novo.py.
+name: iot-simuladores
+
+x-comum: &comum
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  env_file:
+    - path: ../demo/.env.demo
+      required: false
+
+services:
+  # Python + MQTT: solo e silo publicam na borda (UC-01, UC-02); a válvula reage ao comando da regra local.
+  rural-python:
+    <<: *comum
+    build: ./python
+    environment:
+      MQTT_URL: mqtt://host.docker.internal:1884
+      INTERVALO_S: ${INTERVALO_S:-5}
+
+  # Python + MQTT: estação urbana com JSON legado, traduzido pelo adaptador ar-urbano (UC-03).
+  estacao-legada-python:
+    <<: *comum
+    build: ./python
+    command: ["python", "estacao_legada.py"]
+    environment:
+      MQTT_URL: mqtt://host.docker.internal:1883
+      INTERVALO_S: ${INTERVALO_S:-5}
+
+  # JavaScript + HTTP (fetch nativo): reservatório do domínio novo recursos_hidricos (UC-06).
+  reservatorio-javascript:
+    <<: *comum
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./javascript:/app:ro
+    command: ["node", "simulador.mjs"]
+    environment:
+      API_URL: http://host.docker.internal:8000
+      INTERVALO_S: ${INTERVALO_S:-5}
+
+  # Java + HTTP (HttpClient nativo): lixeira com sensor de nível (UC-04).
+  lixeira-java:
+    <<: *comum
+    image: eclipse-temurin:21-jdk-alpine
+    working_dir: /app
+    volumes:
+      - ./java:/app:ro
+    command: ["java", "Simulador.java"]
+    environment:
+      API_URL: http://host.docker.internal:8000
+      INTERVALO_S: ${INTERVALO_S:-5}
