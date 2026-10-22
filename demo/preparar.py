@@ -118,7 +118,12 @@ def main() -> None:
     central_urbano.garantir("/api/v1/regras", REGRA_DA_LIXEIRA, "regra da lixeira cheia (UC-04)")
     gravar_env(ARQUIVO_DE_TOKENS, {chave: valor for chave, valor in tokens.items() if valor})
 
-    if not env_da_borda.get("CHAVE_CENTRAL"):
+    # Uma chave que a central não conhece mais (banco recriado, por exemplo) também é substituída.
+    chave_da_borda = env_da_borda.get("CHAVE_CENTRAL")
+    if chave_da_borda and Api("central", CENTRAL, chave_da_borda).chamar("GET", "/api/v1/catalogo/dominios")[0] == 401:
+        print("A CHAVE_CENTRAL da borda não vale mais na central; emitindo outra.")
+        chave_da_borda = None
+    if not chave_da_borda:
         status, resposta = central_rural.chamar("POST", "/api/v1/chaves", {"papel": "no_borda", "descricao": "borda"})
         if status != 201:
             raise SystemExit(f"falhou ao emitir a chave da borda: HTTP {status} {resposta}")
