@@ -18,8 +18,8 @@ jobs:
         run: pip install "jsonschema[format-nongpl]==4.26.0" pyyaml==6.0.3 openapi-spec-validator==0.9.0 ruff==0.17.1
       - name: Análise estática (RNF-15)
         run: |
-          ruff check servico-core contratos
-          ruff format --check servico-core contratos
+          ruff check servico-core contratos testes-sistema
+          ruff format --check servico-core contratos testes-sistema
       - name: JSON Schema, exemplos e OpenAPI
         run: python contratos/validar.py
       - uses: actions/setup-node@v4
@@ -66,6 +66,10 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Testes (RNF-15, cobertura mínima de 70%)
         run: pytest --cov --cov-fail-under=70
+      - name: Teste de desconexão de 72 h (critério de aceite 9.3)
+        run: pytest ../testes-sistema/desconexao -q -s
+        env:
+          PYTHONPATH: .
 
   imagem:
     name: Imagem Docker
