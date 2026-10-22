@@ -29,6 +29,13 @@ class Configuracao:
     mqtt_trabalhadores: int = 8
     # Intervalo da verificação de regras de ausência de dados.
     verificacao_ausencia_s: float = 30.0
+    # Nó de borda (ADR-0006): identificador, central, chave do nó na central e arquivo da chave da fila.
+    borda_id: str | None = None
+    central_url: str | None = None
+    chave_central: str | None = None
+    chave_fila_arquivo: str | None = None
+    sincronizacao_s: float = 5.0
+    tamanho_do_lote: int = 500
 
     @classmethod
     def do_ambiente(cls, ambiente: Mapping[str, str] = os.environ) -> Configuracao:
@@ -47,6 +54,12 @@ class Configuracao:
             mqtt_grupo=ambiente.get("MQTT_GRUPO") or None,
             mqtt_trabalhadores=int(ambiente.get("MQTT_TRABALHADORES", "8")),
             verificacao_ausencia_s=float(ambiente.get("VERIFICACAO_AUSENCIA_S", "30")),
+            borda_id=ambiente.get("BORDA_ID") or None,
+            central_url=ambiente.get("CENTRAL_URL") or None,
+            chave_central=ambiente.get("CHAVE_CENTRAL") or None,
+            chave_fila_arquivo=ambiente.get("CHAVE_FILA_ARQUIVO") or None,
+            sincronizacao_s=float(ambiente.get("SINCRONIZACAO_S", "5")),
+            tamanho_do_lote=int(ambiente.get("TAMANHO_DO_LOTE", "500")),
         )
 
 

@@ -31,6 +31,8 @@ services:
     environment:
       BANCO_URL_TESTE: postgresql://teste:teste@timescaledb:5432/teste
       MQTT_URL_TESTE: mqtt://mosquitto:1883
+      # Os testes de sistema (testes-sistema/) importam o servico-core a partir daqui.
+      PYTHONPATH: /app
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -40,3 +42,4 @@ services:
     volumes:
       - ./:/app
       - ../contratos:/app/contratos:ro
+      - ../testes-sistema:/testes-sistema:ro

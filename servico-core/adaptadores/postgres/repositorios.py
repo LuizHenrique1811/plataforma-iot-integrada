@@ -380,7 +380,11 @@ class RepositorioDeIngestaoPostgres:
                         " recebido_em = GREATEST(contato_da_borda.recebido_em, EXCLUDED.recebido_em)",
                         (mensagem.inquilino, mensagem.via, mensagem.recebido_em),
                     )
+                self._depois_de_gravar(cursor, mensagem)
         return True
+
+    def _depois_de_gravar(self, cursor: Any, mensagem: MensagemAceita) -> None:
+        """Gancho dentro da mesma transação; a borda o usa para enfileirar a mensagem para a central."""
 
 
 class ConsultasPostgres:
@@ -440,15 +444,22 @@ class ConsultasPostgres:
         with self._pool.connection() as conexao:
             return _listar(
                 conexao,
-                "SELECT id, recebido_em, etapa, motivo, erros, origem, COALESCE(carga, to_jsonb(carga_texto))"
+                "SELECT id, recebido_em, etapa, motivo, erros, origem, carga, carga_texto"
                 " FROM rejeitadas WHERE inquilino_id = %s",
                 (inquilino,),
                 pagina,
                 ordenacao,
                 {"recebido_em": "recebido_em"},
+                # A carga é o JSON recebido ou, se não era JSON, o texto como chegou.
                 lambda linha: RejeitadaConsultada(
-                    linha[0], linha[1], linha[2], linha[3], tuple(linha[4]), linha[5], linha[6]
-                ),
+                    linha[0],
+                    linha[1],
+                    linha[2],
+                    linha[3],
+                    tuple(linha[4]),
+                    linha[5],
+                    linha[6] if linha[6] is not None else linha[7],
+                ),  # fmt: skip
             )
 
 

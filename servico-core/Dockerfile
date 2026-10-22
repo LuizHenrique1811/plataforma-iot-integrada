@@ -26,7 +26,8 @@ COPY servico-core/configuracao.py servico-core/principal.py /app/
 COPY servico-core/dominio/ /app/dominio/
 COPY servico-core/portas/ /app/portas/
 COPY servico-core/adaptadores/ /app/adaptadores/
-RUN useradd --uid 10001 --no-create-home app
+# /dados guarda a fila da borda; o volume nomeado herda o dono do diretório da imagem.
+RUN useradd --uid 10001 --no-create-home app && mkdir /dados && chown app /dados
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "principal:criar_aplicacao", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

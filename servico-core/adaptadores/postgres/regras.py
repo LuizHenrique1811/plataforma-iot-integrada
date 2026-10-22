@@ -113,12 +113,13 @@ class RegrasPostgres:
         condicoes += [f"{_FILTRO_DISPOSITIVO[campo]} = %s" for campo in filtros]
         with self._pool.connection() as conexao:
             linhas = conexao.execute(
-                "SELECT d.id, COALESCE(u.medido_em, d.criado_em) FROM dispositivos d"
+                "SELECT d.id, u.medido_em, d.criado_em FROM dispositivos d"
                 " LEFT JOIN ultimo_estado u ON u.inquilino_id = d.inquilino_id AND u.dispositivo_id = d.id"
                 f" AND u.grandeza = %s WHERE {' AND '.join(condicoes)} ORDER BY d.id",
                 (grandeza, inquilino, *filtros.values()),
             ).fetchall()
-        return [(linha[0], linha[1]) for linha in linhas]
+        # Colunas separadas (e não COALESCE) para o mesmo SQL funcionar no SQLite da borda (ADR-0020).
+        return [(linha[0], linha[1] if linha[1] is not None else linha[2]) for linha in linhas]
 
 
 class AlarmesPostgres:

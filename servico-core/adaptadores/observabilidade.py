@@ -5,7 +5,7 @@ import logging
 import sys
 from datetime import UTC, datetime
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 from dominio.modelos import ResultadoIngestao
 
@@ -63,3 +63,14 @@ def observar(resultado: ResultadoIngestao, entrada: str, duracao_s: float) -> No
         extras.update(inquilino=resultado.mensagem.inquilino, dispositivo=resultado.mensagem.dispositivo)
     nivel = logging.WARNING if rejeicao else logging.INFO
     log.log(nivel, "mensagem %s", resultado.situacao.value, extra=extras)
+
+
+FILA_PENDENTE = Gauge("iot_fila_pendente", "Mensagens na fila da borda aguardando confirmação da central.")
+SINCRONIZADAS = Counter(
+    "iot_mensagens_sincronizadas_total", "Mensagens enviadas pela borda e confirmadas pela central."
+)
+
+
+def observar_sincronizacao(resultado) -> None:
+    FILA_PENDENTE.set(resultado.pendentes)
+    SINCRONIZADAS.inc(resultado.enviadas)
