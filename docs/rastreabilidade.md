@@ -31,12 +31,12 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 | RF-ING-01 | Telemetria via MQTT 3.1.1 e 5.0 sobre TLS | Dispositivo autenticado publica no tópico canônico; mensagem persistida em até 2 s | implementar | parcial | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_mqtt.py` |
 | RF-ING-02 | Telemetria via HTTPS (`POST /api/v1/ingestao`) | Válida retorna 202; inválida retorna 400 com a lista de erros | implementar | implementado | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_api_ingestao.py` |
 | RF-ING-03 | Lotes (`POST /api/v1/ingestao/lote`) com resultado por mensagem | Lote de 5.000 com 3 inválidas grava 4.997 e informa as 3 recusadas | implementar | implementado | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_api_ingestao.py` |
-| RF-ING-04 | Aceitar dados atrasados, armazenando pelo horário da medição | Medição de 48 h atrás entra na posição correta e não gera alarme como se fosse atual | implementar | parcial | [ADR-0013](adr/0013-dados-atrasados-e-agregados.md), `servico-core/testes/test_pipeline.py` |
+| RF-ING-04 | Aceitar dados atrasados, armazenando pelo horário da medição | Medição de 48 h atrás entra na posição correta e não gera alarme como se fosse atual | implementar | implementado | [ADR-0013](adr/0013-dados-atrasados-e-agregados.md), `servico-core/testes/test_motor.py`, `servico-core/testes/test_api_regras.py` |
 | RF-ING-06 | Validar cada mensagem contra o JSON Schema da sua versão | Mensagem fora do esquema vai para a DLQ, com o motivo | implementar | implementado | `contratos/json-schema/`, `servico-core/testes/test_pipeline.py`, `servico-core/testes/test_postgres.py` |
 | RF-ING-08 | Descartar mensagens duplicadas pelo `id_mensagem` | Mensagem reenviada pela borda com o mesmo id é armazenada uma única vez | implementar | implementado | [ADR-0011](adr/0011-janela-de-deduplicacao.md), `servico-core/testes/test_postgres.py` |
 
 - RF-ING-01: o consumidor MQTT assina os tópicos canônicos com sessão persistente e confirma cada mensagem só depois de gravar; o teste com um Mosquitto real exige gravação em até 2 s. Faltam o listener TLS e a autenticação no broker (os Compose usam a porta 1883 sem TLS).
-- RF-ING-04: a medição atrasada entra pelo horário da medição e é marcada como não atual (`atual = false`). Falta o motor de regras ignorar essas medições.
+- RF-ING-04: a medição atrasada entra pelo horário da medição, é marcada como não atual e não dispara regra; o teste usa uma medição de 48 h atrás acima do limite.
 
 ### EDG · Borda e conectividade limitada
 
@@ -69,13 +69,13 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RF-PRO-01 | Normalizar unidades e enriquecer com perfil, domínio, local e área | Mensagem armazenada contém inquilino, domínio, local e área do cadastro | implementar | implementado | [ADR-0008](adr/0008-pipeline-de-ingestao.md), `servico-core/testes/test_pipeline.py` |
-| RF-PRO-02 | Regras condição → ação: limite, ausência de dados, janela de tempo e área geográfica | Regra "temperatura do silo > 30 °C" dispara em até 3 s após a mensagem | implementar | pendente | |
-| RF-PRO-03 | Ações: gerar alarme, notificar, enviar comando, chamar webhook e publicar em tópico | Cada tipo de ação é demonstrado por um teste automatizado | implementar | pendente | |
-| RF-PRO-05 | Ciclo de vida dos alarmes (ativo, reconhecido, resolvido) com severidade | Alarme gerado na borda durante a desconexão aparece com o horário em que ocorreu | implementar | pendente | [ADR-0009](adr/0009-relogio-da-borda.md) |
+| RF-PRO-02 | Regras condição → ação: limite, ausência de dados, janela de tempo e área geográfica | Regra "temperatura do silo > 30 °C" dispara em até 3 s após a mensagem | implementar | simplificado | `servico-core/testes/test_motor.py`, `servico-core/testes/test_api_regras.py` |
+| RF-PRO-03 | Ações: gerar alarme, notificar, enviar comando, chamar webhook e publicar em tópico | Cada tipo de ação é demonstrado por um teste automatizado | implementar | implementado | `servico-core/testes/test_acoes.py` (um teste por ação) |
+| RF-PRO-05 | Ciclo de vida dos alarmes (ativo, reconhecido, resolvido) com severidade | Alarme gerado na borda durante a desconexão aparece com o horário em que ocorreu | implementar | parcial | [ADR-0009](adr/0009-relogio-da-borda.md), `servico-core/testes/test_alarmes.py`, `servico-core/testes/test_motor.py` |
 
-- RF-PRO-02: no MVP, "área geográfica" é filtro pelo identificador da área; a condição por geometria depende do RF-CEN-04 (fase 2).
-- RF-PRO-03: as ações "enviar comando" e "chamar webhook" são Essenciais aqui, embora comandos (RF-DIS-05) e webhooks com novas tentativas (RF-APP-03) sejam Importantes. No MVP, a ação publica no tópico `comando` e faz uma chamada HTTP simples. "Notificar" registra a notificação no log ([ADR-0012](adr/0012-sms-pela-central.md)).
-- RF-PRO-05: depende de regra local na borda (RF-EDG-03); ver inconsistência 1.
+- RF-PRO-02: regras de limite, janela de tempo (condição contínua por um período, contada pelo horário da medição) e ausência de dados (verificação periódica). Cada regra dispara na transição e, quando a condição deixa de valer, resolve sozinha o alarme aberto. A avaliação acontece logo depois da gravação, na mesma requisição. "Área geográfica" é filtro pelo identificador da área (inconsistência 2), por isso "simplificado".
+- RF-PRO-03: as cinco ações são classes do padrão Strategy, cada uma com seu teste: alarme, notificar (no MVP, registrado no log; ADR-0012), comando (mensagem canônica no tópico `comando` do dispositivo de destino), webhook (POST fora da thread de ingestão, sem novas tentativas, que são o RF-APP-03) e publicar (tópico do próprio inquilino). Uma ação com falha não impede as outras.
+- RF-PRO-05: ciclo ativo → reconhecido → resolvido, com severidade, transições inválidas recusadas (409) e operação restrita a gestor, operador e administrador. Um evento `alarme` vindo da borda vira alarme com o horário em que ocorreu, mesmo chegando atrasado. Falta a borda gerar esse evento com a regra local (RF-EDG-03).
 
 ### DAD · Dados
 
@@ -92,10 +92,10 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
-| RF-APP-01 | API REST versionada e documentada em OpenAPI 3 | Documentação interativa gerada a partir do contrato e testada no pipeline | implementar | parcial | [ADR-0019](adr/0019-painel-de-cadastro.md), `servico-core/testes/test_contratos.py` |
+| RF-APP-01 | API REST versionada e documentada em OpenAPI 3 | Documentação interativa gerada a partir do contrato e testada no pipeline | implementar | implementado | [ADR-0019](adr/0019-painel-de-cadastro.md), `servico-core/testes/test_contratos.py` |
 | RF-APP-07 | Paginação, filtros e ordenação padronizados nas listagens | Todas as listagens aceitam os mesmos parâmetros de paginação | implementar | implementado | `servico-core/testes/test_api_catalogo.py` |
 
-- RF-APP-01: `/docs` é gerado de `contratos/openapi.yaml`, o contrato é validado no CI, os corpos das requisições são validados pelos schemas do próprio contrato e um teste confere que toda rota implementada está no contrato. Faltam as rotas de regras e alarmes.
+- RF-APP-01: `/docs` é gerado de `contratos/openapi.yaml`, o contrato é validado no CI, os corpos das requisições são validados pelos schemas do contrato, todo erro (inclusive os do framework) sai no formato `Erro`, e um teste confere nos dois sentidos que as rotas implementadas e as operações do contrato coincidem.
 - RF-APP-07: todas as listagens implementadas aceitam `pagina`, `tamanho` e `ordenar` e respondem no envelope `Pagina`; as de regras e alarmes vão reutilizar o mesmo mecanismo.
 
 ### SEG · Segurança e acesso
@@ -137,7 +137,7 @@ O documento não atribui prioridade aos RNFs.
 | ID | Atributo | Métrica | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RNF-01 | Desempenho | 1.000 msg/s num servidor central; 10.000 com réplicas | implementar 1.000; documentar 10.000 | pendente | `testes-sistema/carga/` |
-| RNF-02 | Latência | p95 ingestão → persistência ≤ 2 s e → regra ≤ 3 s; regras de borda ≤ 3 s | implementar | pendente | `testes-sistema/carga/` |
+| RNF-02 | Latência | p95 ingestão → persistência ≤ 2 s e → regra ≤ 3 s; regras de borda ≤ 3 s | implementar | parcial | `servico-core/testes/test_api_regras.py` |
 | RNF-03 | Disponibilidade | 99,5% ao mês | documentar | pendente | |
 | RNF-04 | Tolerância a desconexão | Borda opera 72 h sem link, sem perda | implementar | pendente | `testes-sistema/desconexao/` |
 | RNF-05 | Banda limitada | Sincronização a partir de 64 kbit/s, com cargas compactadas | documentar | pendente | |
@@ -161,7 +161,7 @@ O documento não atribui prioridade aos RNFs.
 |---|---|---|---|---|---|
 | RF-EDG-03 | Importante | Regras locais na borda, sem depender da central | simplificar | pendente | |
 | RF-CEN-04 | Importante | Geometrias GeoJSON e consultas espaciais | documentar | pendente | |
-| RF-APP-05 | Importante | Notificação por e-mail, aplicativo de mensagens e SMS | simplificar | pendente | [ADR-0012](adr/0012-sms-pela-central.md) |
+| RF-APP-05 | Importante | Notificação por e-mail, aplicativo de mensagens e SMS | simplificar | simplificado | [ADR-0012](adr/0012-sms-pela-central.md), `servico-core/testes/test_api_regras.py` |
 | RF-DAD-06 | Importante | Trilha de auditoria das operações administrativas | documentar | pendente | |
 
 - RF-EDG-03: uma regra local simples já no MVP (ver inconsistência 1). A regra é configurada direto na borda; a distribuição de regras pela central é o RF-EDG-04 (Importante).
@@ -173,7 +173,8 @@ O documento não atribui prioridade aos RNFs.
 | UC | Requisitos citados no documento | Passo da demo | Status | Evidência |
 |---|---|---|---|---|
 | UC-01 · Fazenda com link via satélite | RF-CEN-03, RF-CEN-04, RF-EDG-01 a 03, RF-ING-03, RF-ING-04 | 2 e 3 | pendente | |
-| UC-02 · Alarme de temperatura em silo | RF-CEN-02, RF-PRO-02, RF-PRO-05, RF-APP-05 | 2 | pendente | |
+| UC-02 · Alarme de temperatura em silo | RF-CEN-02, RF-PRO-02, RF-PRO-05, RF-APP-05 | 2 | simplificado | `servico-core/testes/test_api_regras.py` (`test_uc02_alarme_de_temperatura_em_silo`) |
+| UC-04 · Alarme de lixeira cheia e rota de coleta | RF-PRO-02, RF-PRO-03, RF-PRO-05, RF-APP-03 | (teste) | implementado | `servico-core/testes/test_api_regras.py` (`test_uc04_lixeira_cheia_com_webhook_e_resolucao_automatica`) |
 | UC-03 · Qualidade do ar urbana (nível 2) | RF-INT-03, RF-INT-05, RF-INT-06, RF-ING-06 | 4 | pendente | |
 | UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | implementado | `servico-core/testes/test_api_catalogo.py` (`test_uc06_cenario_novo_de_reservatorios_sem_programar`) |
 
