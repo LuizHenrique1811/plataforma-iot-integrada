@@ -27,3 +27,4 @@ Cada decisão de arquitetura tem um arquivo curto com contexto, decisão, altern
 | [0018](0018-autenticacao-sem-keycloak.md) | Autenticação por token e chave de API, sem Keycloak | aceito | RF-SEG-01/02/03/04, RF-DIS-02 |
 | [0019](0019-painel-de-cadastro.md) | Documentação interativa como painel de cadastro | aceito | RF-DIS-01, RF-CEN-01, RF-APP-01 |
 | [0020](0020-repositorios-sql-na-borda.md) | Os mesmos repositórios SQL na central e na borda | aceito | RF-EDG-01/02/03, RF-SEG-05 |
+| [0021](0021-simuladores-e-adaptador-como-clientes-externos.md) | Simuladores e adaptador como clientes externos | aceito | RF-INT-02, RF-INT-03 |

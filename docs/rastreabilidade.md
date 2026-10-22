@@ -61,8 +61,11 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 | ID | Requisito | Critério de aceitação | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RF-INT-01 | Publicar o contrato canônico versionado (JSON Schema e AsyncAPI) | Contrato acessível por URL pública, com histórico de versões | implementar | implementado | [ADR-0002](adr/0002-integracao-por-contratos-abertos.md), rota `/contratos`, `servico-core/testes/test_api_ingestao.py` |
-| RF-INT-02 | Integração apenas com protocolos padrão, sem biblioteca proprietária | Exemplos funcionais em três linguagens usando só bibliotecas genéricas de MQTT/HTTP | implementar | pendente | `simuladores/` |
-| RF-INT-03 | Adaptadores de protocolo plugáveis em contêiner, em qualquer linguagem | Novo adaptador implantado sem recompilar nem reiniciar o núcleo (central ou borda) | implementar | pendente | `adaptadores-plugaveis/ar-urbano/` |
+| RF-INT-02 | Integração apenas com protocolos padrão, sem biblioteca proprietária | Exemplos funcionais em três linguagens usando só bibliotecas genéricas de MQTT/HTTP | implementar | implementado | `simuladores/` (Python/MQTT, JavaScript/HTTP, Java/HTTP), job `integracao` do CI, [ADR-0021](adr/0021-simuladores-e-adaptador-como-clientes-externos.md) |
+| RF-INT-03 | Adaptadores de protocolo plugáveis em contêiner, em qualquer linguagem | Novo adaptador implantado sem recompilar nem reiniciar o núcleo (central ou borda) | implementar | implementado | `adaptadores-plugaveis/ar-urbano/` e seus testes, [ADR-0021](adr/0021-simuladores-e-adaptador-como-clientes-externos.md) |
+
+- RF-INT-02: os simuladores não usam nada do núcleo. O Python usa só `paho-mqtt`; o JavaScript, só o `fetch` nativo do Node 22, sem pacotes; o Java, só o `HttpClient` nativo, sem dependências. As amostras das três linguagens são validadas contra o JSON Schema canônico no CI.
+- RF-INT-03: o adaptador `ar-urbano` roda em contêiner próprio, traduz o JSON legado das estações para a mensagem canônica e entra no ar sem reiniciar o núcleo (`docker compose ... up` separado). O `id_mensagem` derivado da estação e do horário faz a leitura reenviada pelo firmware ser deduplicada.
 
 ### PRO · Processamento e regras
 
@@ -75,7 +78,7 @@ Liga cada requisito do Documento de Requisitos v2.0 ([requisitos.md](requisitos.
 
 - RF-PRO-02: regras de limite, janela de tempo (condição contínua por um período, contada pelo horário da medição) e ausência de dados (verificação periódica). Cada regra dispara na transição e, quando a condição deixa de valer, resolve sozinha o alarme aberto. A avaliação acontece logo depois da gravação, na mesma requisição. "Área geográfica" é filtro pelo identificador da área (inconsistência 2), por isso "simplificado".
 - RF-PRO-03: as cinco ações são classes do padrão Strategy, cada uma com seu teste: alarme, notificar (no MVP, registrado no log; ADR-0012), comando (mensagem canônica no tópico `comando` do dispositivo de destino), webhook (POST fora da thread de ingestão, sem novas tentativas, que são o RF-APP-03) e publicar (tópico do próprio inquilino). Uma ação com falha não impede as outras.
-- RF-PRO-05: ciclo ativo → reconhecido → resolvido, com severidade, transições inválidas recusadas (409) e operação restrita a gestor, operador e administrador. Um evento `alarme` vindo da borda vira alarme com o horário em que ocorreu, mesmo chegando atrasado. Na borda, a regra local gera esse evento ao abrir o alarme, e ele vai para a fila com prioridade sobre a telemetria; o teste de 72 h confere o alarme na central com o horário original.
+- RF-PRO-05: ciclo ativo → reconhecido → resolvido, com severidade, transições inválidas recusadas (409) e operação restrita a gestor, operador e administrador. Cada nó abre e resolve os alarmes que ele mesmo gera, um aberto por regra, dispositivo e origem. Na borda, a regra local abre o alarme e o resolve quando a condição deixa de valer; os eventos `alarme` e `alarme_resolvido` vão para a fila com prioridade e a central os aplica com os horários da borda, mesmo chegando atrasados.
 
 ### DAD · Dados
 
@@ -137,7 +140,7 @@ O documento não atribui prioridade aos RNFs.
 | ID | Atributo | Métrica | Tratamento | Status | Evidência |
 |---|---|---|---|---|---|
 | RNF-01 | Desempenho | 1.000 msg/s num servidor central; 10.000 com réplicas | implementar 1.000; documentar 10.000 | pendente | `testes-sistema/carga/` |
-| RNF-02 | Latência | p95 ingestão → persistência ≤ 2 s e → regra ≤ 3 s; regras de borda ≤ 3 s | implementar | parcial | `servico-core/testes/test_api_regras.py` |
+| RNF-02 | Latência | p95 ingestão → persistência ≤ 2 s e → regra ≤ 3 s; regras de borda ≤ 3 s | implementar | parcial | `servico-core/testes/test_api_regras.py`, painel de latência p95 no Grafana (`infra/grafana/dashboards/visao-geral.json`) |
 | RNF-03 | Disponibilidade | 99,5% ao mês | documentar | pendente | |
 | RNF-04 | Tolerância a desconexão | Borda opera 72 h sem link, sem perda | implementar | implementado | `testes-sistema/desconexao/test_desconexao_72h.py` |
 | RNF-05 | Banda limitada | Sincronização a partir de 64 kbit/s, com cargas compactadas | documentar | pendente | |
@@ -174,18 +177,18 @@ O documento não atribui prioridade aos RNFs.
 |---|---|---|---|---|
 | UC-01 · Fazenda com link via satélite | RF-CEN-03, RF-CEN-04, RF-EDG-01 a 03, RF-ING-03, RF-ING-04 | 2 e 3 | simplificado | `testes-sistema/desconexao/test_desconexao_72h.py`, `servico-core/testes/test_borda.py` |
 | UC-02 · Alarme de temperatura em silo | RF-CEN-02, RF-PRO-02, RF-PRO-05, RF-APP-05 | 2 | simplificado | `servico-core/testes/test_api_regras.py` (`test_uc02_alarme_de_temperatura_em_silo`) |
-| UC-04 · Alarme de lixeira cheia e rota de coleta | RF-PRO-02, RF-PRO-03, RF-PRO-05, RF-APP-03 | (teste) | implementado | `servico-core/testes/test_api_regras.py` (`test_uc04_lixeira_cheia_com_webhook_e_resolucao_automatica`) |
-| UC-03 · Qualidade do ar urbana (nível 2) | RF-INT-03, RF-INT-05, RF-INT-06, RF-ING-06 | 4 | pendente | |
-| UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | implementado | `servico-core/testes/test_api_catalogo.py` (`test_uc06_cenario_novo_de_reservatorios_sem_programar`) |
+| UC-04 · Alarme de lixeira cheia e rota de coleta | RF-PRO-02, RF-PRO-03, RF-PRO-05, RF-APP-03 | (teste) | implementado | `servico-core/testes/test_api_regras.py`, simulador `lixeira-java` |
+| UC-03 · Qualidade do ar urbana (nível 2) | RF-INT-03, RF-INT-05, RF-INT-06, RF-ING-06 | 4 | simplificado | `adaptadores-plugaveis/ar-urbano/`, simulador `estacao-legada-python` |
+| UC-06 · Cenário novo: reservatórios | RF-CEN-01, RF-CEN-02, RNF-08 | 1 | implementado | `servico-core/testes/test_api_catalogo.py`, `demo/dominio_novo.py`, simulador `reservatorio-javascript` |
 
 ## Critérios de aceite do MVP (seção 9.3)
 
 | Critério | Status | Evidência |
 |---|---|---|
-| Um projeto urbano e um rural integrados; o rural com nó de borda | parcial | `testes-sistema/desconexao/test_desconexao_72h.py` (rural com borda) |
+| Um projeto urbano e um rural integrados; o rural com nó de borda | implementado | `demo/preparar.py` (rural coop-cerrado com borda; urbano semma), `testes-sistema/desconexao/test_desconexao_72h.py` |
 | Link da borda cortado por 72 h sem perda nem duplicação após a reconexão | implementado | `testes-sistema/desconexao/test_desconexao_72h.py` |
 | Um domínio novo criado só por configuração (RNF-08) | implementado | `servico-core/testes/test_api_catalogo.py` (`test_uc06_cenario_novo_de_reservatorios_sem_programar`) |
-| Integração demonstrada em pelo menos três linguagens | pendente | |
+| Integração demonstrada em pelo menos três linguagens | implementado | `simuladores/` e job `integracao` do CI (amostras das três linguagens validadas contra o contrato) |
 | Teste de carga comprovando RNF-01 e RNF-02 em ambiente de homologação | pendente | |
 
 ## Inconsistências do documento

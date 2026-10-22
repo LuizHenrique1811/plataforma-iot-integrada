@@ -64,6 +64,72 @@ plataforma-iot-integrada/
 
 **Sobre as 72 horas de desconexão:** na demonstração o corte dura poucos minutos. As 72 h exigidas são comprovadas por um teste automatizado ([testes-sistema/desconexao](testes-sistema/desconexao)) que injeta mensagens com timestamps retroativos e verifica que não houve perda nem duplicação.
 
+### Comandos, na ordem
+
+Com a central e a borda no ar ([infra/README.md](infra/README.md)), na raiz do repositório:
+
+**Preparação (antes da apresentação):** cenário rural na central e na borda, cenário urbano na central, regras e tokens.
+
+```bash
+docker compose -f demo/compose.yaml run --rm preparar
+```
+
+**1. Domínio novo ao vivo (UC-06).** Pode ser feito pela documentação interativa em <http://localhost:8000/docs> ou pelo script, que narra cada passo (`PAUSAR=1` espera Enter entre eles). Depois, o simulador em JavaScript envia o nível do reservatório:
+
+```bash
+docker compose -f demo/compose.yaml run --rm dominio-novo
+```
+
+```bash
+docker compose -f simuladores/compose.yaml up -d --build reservatorio-javascript
+```
+
+**2. Rural com borda (UC-01, UC-02).** Solo e silo publicam no broker da borda; quando o solo passa de 20% para baixo, a regra local abre o alarme e manda abrir a válvula, e a umidade volta a subir:
+
+```bash
+docker compose -f simuladores/compose.yaml up -d --build rural-python
+```
+
+**3. Corte de link.** Com o painel do Grafana aberto (<http://localhost:3000>, "Plataforma IoT - visão geral"), corte e religue o link; a fila da borda aparece em <http://localhost:8001/metrics> (`iot_fila_pendente`):
+
+```bash
+docker network disconnect iot-link iot-borda-servico-core-1
+```
+
+```bash
+docker network connect iot-link iot-borda-servico-core-1
+```
+
+**4. Urbano nível 2 (UC-03).** A estação legada publica o JSON do fabricante; o adaptador entra no ar sem reiniciar o núcleo e as medições passam a aparecer para o inquilino `semma`:
+
+```bash
+docker compose -f simuladores/compose.yaml up -d --build estacao-legada-python
+```
+
+```bash
+docker compose -f adaptadores-plugaveis/ar-urbano/compose.yaml up -d --build
+```
+
+**5. Três linguagens.** Python (MQTT), JavaScript (HTTP) e Java (HTTP, lixeira do UC-04):
+
+```bash
+docker compose -f simuladores/compose.yaml up -d --build lixeira-java
+```
+
+```bash
+docker compose -f simuladores/compose.yaml logs -f
+```
+
+Para encerrar os simuladores e o adaptador:
+
+```bash
+docker compose -f simuladores/compose.yaml down
+```
+
+```bash
+docker compose -f adaptadores-plugaveis/ar-urbano/compose.yaml down
+```
+
 ### Critérios de aceite do MVP (seção 9.3 do documento)
 
 - Um projeto urbano e um rural integrados; o rural com nó de borda.
@@ -80,7 +146,7 @@ Entrega na sexta-feira, 23/10/2026, à noite. As funcionalidades congelam por vo
 - [x] **Núcleo central:** catálogo e cadastro com `tenant_id`, token por dispositivo, pipeline de ingestão por HTTP e MQTT, último estado, `/api/v1/ingestao` e `/api/v1/ingestao/lote`, paginação padronizada.
 - [x] **Regras e alarmes:** ações por Strategy (alarme, notificar em log, comando, webhook, publicar em tópico), regras de limite e de janela de tempo, ciclo de vida do alarme, dado atrasado sem alarme.
 - [x] **Borda:** fila SQLite, sincronização em lotes com remoção só após confirmação, regra local, teste de desconexão de 72 h.
-- [ ] **Integração e demonstração:** simuladores em três linguagens (em contêineres), adaptador urbano, painéis do Grafana, `/metrics`, logs JSON, domínio novo por API.
+- [x] **Integração e demonstração:** simuladores em três linguagens (em contêineres), adaptador urbano, painéis do Grafana, `/metrics`, logs JSON, domínio novo por API.
 - [ ] **Fechamento:** rastreabilidade com status e evidências, `docs/arquitetura.md`, README, teste de carga se houver tempo, ensaio da demo do zero.
 
 Se o tempo apertar, são cortados nesta ordem e passam a ser documentados: PostGIS, teste de carga, painéis elaborados, adaptador urbano e cifragem da fila. Não são cortados: o pipeline de ingestão, a borda com sincronização e o teste de desconexão, o domínio novo só por configuração e os simuladores em três linguagens.

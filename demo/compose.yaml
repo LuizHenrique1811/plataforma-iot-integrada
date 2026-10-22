@@ -1,0 +1,25 @@
+# Scripts da demonstração, em contêiner (só biblioteca padrão do Python).
+#   docker compose -f demo/compose.yaml run --rm preparar
+#   docker compose -f demo/compose.yaml run --rm dominio-novo
+# Leem as chaves de infra/central/.env e infra/borda/.env e gravam os tokens em demo/.env.demo.
+name: iot-demo
+
+x-comum: &comum
+  image: python:3.12-slim
+  working_dir: /repo/demo
+  volumes:
+    - ..:/repo
+  environment:
+    PYTHONUNBUFFERED: "1"
+    PAUSAR: ${PAUSAR:-0}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  preparar:
+    <<: *comum
+    command: ["python", "preparar.py"]
+
+  dominio-novo:
+    <<: *comum
+    command: ["python", "dominio_novo.py"]
