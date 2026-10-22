@@ -4,31 +4,48 @@ Dois ambientes Docker Compose usam a mesma imagem do `servico-core` com configur
 
 | Pasta | Ambiente | Serviços |
 |---|---|---|
-| [central/](central) | Instância central | Mosquitto, TimescaleDB, Grafana, `servico-core` |
-| [borda/](borda) | Nó de borda | Mosquitto (o `servico-core` da borda entra com a fila SQLite) |
+| [central/](central) | Instância central | Mosquitto, TimescaleDB, Grafana, `servico-core` (PostgreSQL) |
+| [borda/](borda) | Nó de borda | Mosquitto, `servico-core` (SQLite cifrado, fila, regras locais e sincronização) |
 | [grafana/](grafana) | Provisionamento do Grafana | Fonte de dados TimescaleDB (painéis depois) |
 
-Na central, o `servico-core` é construído a partir de `servico-core/Dockerfile` no primeiro `up` e aplica as migrações do banco ao iniciar.
-
-Redis, Keycloak, o servidor Prometheus e o PostGIS ficaram fora de propósito e estão registrados como evolução ([ADR-0007](../docs/adr/0007-infraestrutura-aberta.md), [ADR-0017](../docs/adr/0017-ultimo-estado-no-postgresql.md), [ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
+O `servico-core` é construído a partir de `servico-core/Dockerfile` no primeiro `up` e aplica as migrações do banco ao iniciar. Redis, Keycloak, o servidor Prometheus e o PostGIS ficaram fora de propósito e estão registrados como evolução ([ADR-0007](../docs/adr/0007-infraestrutura-aberta.md), [ADR-0017](../docs/adr/0017-ultimo-estado-no-postgresql.md), [ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
 
 ## Como subir
 
-Em cada pasta (`central/` e `borda/`):
+**1. Rede entre a central e a borda (uma vez).** Ela fica fora dos dois projetos, para cada um subir independente do outro:
 
-1. Copie `.env.example` para `.env` e preencha as senhas e a `CHAVE_ADMIN`. O Compose recusa subir se uma delas estiver vazia.
-2. Rode:
+```bash
+docker network create iot-link
+```
+
+**2. Central.** Em `infra/central/`, copie `.env.example` para `.env` e preencha as senhas e a `CHAVE_ADMIN` (o Compose recusa subir se uma delas estiver vazia). Depois:
 
 ```bash
 docker compose up -d --build
 ```
 
-As versões das imagens são fixas. Com a central no ar:
+**3. Chave da borda na central.** Com o inquilino criado na central, emita uma chave de papel `no_borda` (em <http://localhost:8000/docs>, `POST /api/v1/chaves` com `{"papel": "no_borda"}` e o cabeçalho `X-Inquilino`). Ela vai no `CHAVE_CENTRAL` da borda.
 
-- documentação interativa da API: <http://localhost:8000/docs>
-- saúde: <http://localhost:8000/saude>
-- métricas: <http://localhost:8000/metrics>
-- Grafana: <http://localhost:3000>
+**4. Chave da fila da borda.** Em `infra/borda/`, crie `segredos/chave-fila` com um conteúdo aleatório. A pasta fica fora do volume de dados e fora do repositório, simulando a mídia separada do [ADR-0014](../docs/adr/0014-chave-da-fila-da-borda.md):
+
+```bash
+docker run --rm python:3.12-slim python -c "import secrets; print(secrets.token_hex(32))" > segredos/chave-fila
+```
+
+**5. Borda.** Em `infra/borda/`, copie `.env.example` para `.env`, preencha `CHAVE_ADMIN` e `CHAVE_CENTRAL` e rode:
+
+```bash
+docker compose up -d --build
+```
+
+Sem `CHAVE_CENTRAL`, a borda funciona e acumula a fila, mas não sincroniza. O catálogo e as regras locais (com `"ambito": "borda"`) são cadastrados pela API da própria borda, em <http://localhost:8001/docs>. A distribuição automática a partir da central é o RF-EDG-04 (Importante).
+
+| Endereço | Central | Borda |
+|---|---|---|
+| Documentação interativa da API | <http://localhost:8000/docs> | <http://localhost:8001/docs> |
+| Saúde | <http://localhost:8000/saude> | <http://localhost:8001/saude> |
+| Métricas (`iot_fila_pendente` na borda) | <http://localhost:8000/metrics> | <http://localhost:8001/metrics> |
+| Grafana | <http://localhost:3000> | — |
 
 ## Portas
 
@@ -37,19 +54,13 @@ Todas são publicadas em `127.0.0.1` por padrão. Use `BIND_ADDR=0.0.0.0` no `.e
 | Serviço | Central | Borda |
 |---|---|---|
 | MQTT | 1883 | 1884 |
-| servico-core: API, Swagger UI e `/metrics` | 8000 | 8001 (futuro) |
+| servico-core: API, Swagger UI e `/metrics` | 8000 | 8001 |
 | PostgreSQL / TimescaleDB | 5432 | — |
 | Grafana | 3000 | — |
 
 ## Corte de link na demonstração
 
-A borda sincroniza com a central pela rede Docker `iot-link`, compartilhada entre os dois projetos. Quando o `servico-core` entrar, descomente os blocos `networks` nos dois arquivos e crie a rede uma vez:
-
-```bash
-docker network create iot-link
-```
-
-Para simular a queda e a volta do link:
+A borda alcança a central pela rede `iot-link`, onde a central atende pelo nome `central`. Para simular a queda e a volta do link:
 
 ```bash
 docker network disconnect iot-link iot-borda-servico-core-1
@@ -59,11 +70,16 @@ docker network disconnect iot-link iot-borda-servico-core-1
 docker network connect iot-link iot-borda-servico-core-1
 ```
 
+Durante o corte, a borda aceita as mensagens, executa as regras locais (o comando chega à válvula pelo broker da borda) e acumula a fila (`iot_fila_pendente` em `/metrics`). Ao religar, a sincronização roda a cada 5 s (`SINCRONIZACAO_S`) e esvazia a fila em lotes, removendo cada lote só depois da confirmação da central.
+
 O teste de 72 h não depende disso: ele injeta mensagens com timestamps retroativos ([testes-sistema/desconexao](../testes-sistema/desconexao)).
+
+## Consumo medido
+
+Em repouso, numa máquina x86 com Docker Desktop, a borda inteira usou cerca de 77 MB de memória (`servico-core` 74 MB, Mosquitto 3 MB), bem abaixo dos 4 GB do equipamento de referência do RNF-06. A imagem ainda não é multi-arquitetura para ARM (ADR-0006).
 
 ## Pendências
 
-- **Autenticação e ACL no Mosquitto** (RF-SEG-04, RF-DIS-02): hoje os dois brokers aceitam conexões anônimas. O plano é o plugin de segurança dinâmica do Mosquitto, administrado pelo `servico-core` ([ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
-- **TLS** (RF-ING-01, RNF-11): os brokers usam a porta 1883 sem TLS.
-- **Usuário somente leitura para o Grafana**: a fonte TimescaleDB usa o usuário principal do banco até o esquema existir.
-- **Chave da fila da borda** (RF-SEG-05): o Docker secret está previsto no `borda/compose.yaml`, comentado ([ADR-0014](../docs/adr/0014-chave-da-fila-da-borda.md)).
+- **Autenticação e ACL no Mosquitto** (RF-SEG-04, RF-DIS-02): hoje os dois brokers aceitam conexões anônimas, e o `servico-core` recusa mensagens publicadas no tópico de outro dispositivo ([ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
+- **TLS** (RF-ING-01, RNF-11): os brokers e as APIs usam portas sem TLS.
+- **Usuário somente leitura para o Grafana**: a fonte TimescaleDB usa o usuário principal do banco.

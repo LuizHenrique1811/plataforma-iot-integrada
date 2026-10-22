@@ -38,3 +38,6 @@ build/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Chaves da fila da borda e outros segredos locais
+segredos/

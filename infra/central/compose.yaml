@@ -80,20 +80,20 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_started
-    # Ativar junto com a borda: rede iot-link, pela qual a borda encontra a central como "central".
-    # networks:
-    #   default:
-    #   link:
-    #     aliases: [central]
+    # Rede iot-link, compartilhada com a borda, que encontra a central pelo nome "central".
+    networks:
+      default:
+      link:
+        aliases: [central]
 
 volumes:
   mosquitto-dados:
   timescaledb-dados:
   grafana-dados:
 
-# Rede compartilhada com a borda, por onde passa a sincronização em lotes.
-# Ativar junto com o servico-core; criar uma vez com `docker network create iot-link` (ver infra/README.md).
-# networks:
-#   link:
-#     name: iot-link
-#     external: true
+# Rede compartilhada com a borda, por onde passa a sincronização em lotes. Criada uma vez, fora dos
+# projetos, para central e borda subirem independentes: docker network create iot-link
+networks:
+  link:
+    name: iot-link
+    external: true
