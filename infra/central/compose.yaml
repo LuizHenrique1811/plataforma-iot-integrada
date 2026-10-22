@@ -94,7 +94,7 @@ services:
         aliases: [central]
 
   # Réplicas de ingestão no mesmo servidor, para a carga de 1.000 msg/s (RNF-01, RNF-09, ADR-0022):
-  #   docker compose --profile escala up -d
+  #   docker compose --profile escala up -d --wait
   # Cada uma usa sessão limpa (uma réplica parada sai do grupo e não segura mensagens), um MQTT_CLIENTE
   # próprio e não verifica ausências: só o servico-core principal, de sessão persistente, faz isso.
   # Sem portas publicadas. Para voltar a um processo só: docker compose --profile escala stop

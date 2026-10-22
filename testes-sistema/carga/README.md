@@ -27,7 +27,7 @@ O teste é aprovado se nada se perde, nada se duplica, nada vai para a DLQ, a va
 Com a central no ar e as réplicas de ingestão ligadas ([ADR-0022](../../docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)):
 
 ```bash
-docker compose -f infra/central/compose.yaml --profile escala up -d
+docker compose -f infra/central/compose.yaml --profile escala up -d --wait
 ```
 
 ```bash

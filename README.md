@@ -65,6 +65,8 @@ plataforma-iot-integrada/
 | 5 | Três linguagens | Simuladores em Python, JavaScript e Java usando só bibliotecas genéricas de MQTT e HTTP. | RF-INT-02, critério 9.3 |
 | 6 | Carga | Script a 1.000 msg/s com a latência acompanhada no Grafana. | RNF-01, RNF-02 |
 
+O roteiro falado, com os tempos medidos no ensaio, o que mostrar em cada passo, o que fazer se algo der errado e as perguntas prováveis está em [docs/roteiro-apresentacao.md](docs/roteiro-apresentacao.md).
+
 **Sobre as 72 horas de desconexão:** na demonstração o corte dura poucos minutos. As 72 h exigidas são comprovadas por um teste automatizado ([testes-sistema/desconexao](testes-sistema/desconexao)) que injeta mensagens com timestamps retroativos e verifica que não houve perda nem duplicação.
 
 ### Comandos, na ordem
@@ -136,7 +138,7 @@ docker compose -f simuladores/compose.yaml stop
 ```
 
 ```bash
-docker compose -f infra/central/compose.yaml --profile escala up -d
+docker compose -f infra/central/compose.yaml --profile escala up -d --wait
 ```
 
 ```bash

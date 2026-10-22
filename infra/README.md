@@ -54,7 +54,7 @@ docker compose up -d
 
 Sem o script, emita a chave em <http://localhost:8000/docs> (`POST /api/v1/chaves` com `{"papel": "no_borda"}` e o cabeçalho `X-Inquilino`), copie-a para `CHAVE_CENTRAL` e rode o mesmo `docker compose up -d`. O catálogo e as regras locais (com `"ambito": "borda"`) são cadastrados pela API da própria borda, em <http://localhost:8001/docs>; a distribuição automática a partir da central é o RF-EDG-04 (Importante).
 
-**6. Réplicas de ingestão (só para o teste de carga).** Em `infra/central/`, `docker compose --profile escala up -d` acrescenta 9 processos de ingestão; `docker compose --profile escala stop` volta a um só ([ADR-0022](../docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)).
+**6. Réplicas de ingestão (só para o teste de carga).** Em `infra/central/`, `docker compose --profile escala up -d --wait` acrescenta 9 processos de ingestão e só devolve o terminal quando todos estão saudáveis; `docker compose --profile escala stop` volta a um só ([ADR-0022](../docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)).
 
 | Endereço | Central | Borda |
 |---|---|---|
