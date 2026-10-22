@@ -65,6 +65,9 @@ services:
       BANCO_URL: postgresql://${POSTGRES_USER:-iot}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}@timescaledb:5432/${POSTGRES_DB:-iot}
       CHAVE_ADMIN: ${CHAVE_ADMIN:?Defina CHAVE_ADMIN no arquivo .env}
       LOG_NIVEL: ${LOG_NIVEL:-INFO}
+      # Ingestão MQTT com sessão persistente: o broker guarda as mensagens se o serviço reiniciar.
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_CLIENTE: servico-core-central
     ports:
       - "${BIND_ADDR:-127.0.0.1}:8000:8000"   # API, Swagger UI (ADR-0019) e /metrics (RF-OBS-01)
     healthcheck:
@@ -75,6 +78,8 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     # Ativar junto com a borda: rede iot-link, pela qual a borda encontra a central como "central".
     # networks:
     #   default:

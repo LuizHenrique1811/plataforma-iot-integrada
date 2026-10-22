@@ -52,8 +52,11 @@ jobs:
         working-directory: servico-core
     env:
       BANCO_URL_TESTE: postgresql://teste:teste@localhost:5432/teste
+      MQTT_URL_TESTE: mqtt://localhost:1883
     steps:
       - uses: actions/checkout@v4
+      - name: Mosquitto para o teste de integração MQTT
+        run: docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2.0.22 mosquitto -c /mosquitto-no-auth.conf
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
