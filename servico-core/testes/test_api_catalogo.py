@@ -225,3 +225,16 @@ def test_telemetria_com_intervalo_sem_fuso(cliente, gestor):
     cadastrar(cliente, gestor)
     caminho = "/api/v1/dispositivos/solo-talhao07-02/telemetria?inicio=2026-10-19T00:00:00&fim=2026-10-20T00:00:00"
     assert cliente.get(caminho, headers=gestor).json()["total"] == 0
+
+
+def test_corpo_ilegivel_e_rota_inexistente_seguem_o_formato_de_erro(cliente, gestor):
+    # Bytes fora de UTF-8 nem chegam a ser JSON; a resposta continua no formato Erro do contrato.
+    resposta = cliente.post(
+        "/api/v1/catalogo/perfis",
+        content='{"id": "v", "nome": "Válvula"}'.encode("cp1252"),
+        headers={**gestor, "Content-Type": "application/json"},
+    )
+    assert resposta.status_code == 400
+    assert set(resposta.json()) >= {"codigo", "mensagem"}
+    inexistente = cliente.get("/api/v1/nao-existe", headers=gestor)
+    assert (inexistente.status_code, inexistente.json()["codigo"]) == (404, "nao_encontrado")

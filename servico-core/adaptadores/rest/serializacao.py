@@ -10,6 +10,7 @@ from dominio.catalogo import Area, ChaveDeApi, Dominio, Inquilino, Site
 from dominio.consultas import EstadoDoDispositivo, MedicaoConsultada, RejeitadaConsultada
 from dominio.modelos import DispositivoCadastrado, Perfil
 from dominio.paginacao import Pagina
+from dominio.regras import Alarme
 
 
 def instante(valor: datetime | None) -> str | None:
@@ -118,4 +119,19 @@ def rejeitada_json(rejeitada: RejeitadaConsultada) -> dict[str, Any]:
         "erros": list(rejeitada.erros),
         "origem": rejeitada.origem,
         "carga": rejeitada.carga,
+    }
+
+
+def alarme_json(alarme: Alarme) -> dict[str, Any]:
+    return {
+        "id": alarme.id,
+        "regra": alarme.regra,
+        "dispositivo": alarme.dispositivo,
+        "severidade": alarme.severidade.value,
+        "estado": alarme.estado.value,
+        "mensagem": alarme.mensagem,
+        "origem": alarme.origem,
+        "ocorrido_em": instante(alarme.ocorrido_em),
+        "reconhecido_em": instante(alarme.reconhecido_em),
+        "resolvido_em": instante(alarme.resolvido_em),
     }

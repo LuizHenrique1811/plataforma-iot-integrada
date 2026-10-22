@@ -8,10 +8,11 @@ vai para a fila de mensagens inválidas (DLQ) com a etapa e o motivo.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from dominio.modelos import (
     PAPEIS_QUE_INGEREM,
@@ -37,6 +38,14 @@ from portas.repositorios import Catalogo, FilaDeRejeitadas, RepositorioDeIngesta
 # Antes disso, o relógio do dispositivo certamente não estava acertado (ADR-0009).
 TIMESTAMP_MINIMO = datetime(2000, 1, 1, tzinfo=UTC)
 
+log = logging.getLogger("servico_core.ingestao")
+
+
+class ObservadorDeIngestao(Protocol):
+    """Interessado em cada mensagem aceita, como o motor de regras (padrão Observer, seção 7.2)."""
+
+    def mensagem_aceita(self, mensagem: MensagemAceita) -> object: ...
+
 
 @dataclass
 class _Contexto:
@@ -58,6 +67,7 @@ class PipelineDeIngestao:
         *,
         limite_dado_atual: timedelta = timedelta(minutes=5),
         tolerancia_futuro: timedelta = timedelta(minutes=5),
+        observadores: tuple[ObservadorDeIngestao, ...] = (),
     ) -> None:
         self._validador = validador
         self._catalogo = catalogo
@@ -66,6 +76,7 @@ class PipelineDeIngestao:
         self._relogio = relogio
         self._limite_dado_atual = limite_dado_atual
         self._tolerancia_futuro = tolerancia_futuro
+        self._observadores = observadores
         self._filtros: tuple[Callable[[_Contexto], ResultadoIngestao | None], ...] = (
             self._validar,
             self._autorizar,
@@ -235,6 +246,12 @@ class PipelineDeIngestao:
         # A gravação do id_mensagem e dos dados é atômica; uma corrida entre reenvios resulta em duplicada.
         if not self._repositorio.persistir(mensagem):
             return ResultadoIngestao(Situacao.DUPLICADA, id_mensagem=mensagem.id_mensagem)
+        for observador in self._observadores:
+            try:
+                observador.mensagem_aceita(mensagem)
+            except Exception:
+                # A mensagem já está gravada; uma falha no observador não pode desfazer a ingestão.
+                log.exception("falha ao notificar %s", type(observador).__name__)
         return ResultadoIngestao(Situacao.ACEITA, id_mensagem=mensagem.id_mensagem, mensagem=mensagem)
 
     # Apoio ---------------------------------------------------------------------------------

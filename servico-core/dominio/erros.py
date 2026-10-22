@@ -26,3 +26,9 @@ class JaExiste(ErroDeDominio):
 
 class DadosInvalidos(ErroDeDominio):
     codigo = "dados_invalidos"
+
+
+class Conflito(ErroDeDominio):
+    """Transição de estado não permitida (ex.: reconhecer um alarme já resolvido)."""
+
+    codigo = "transicao_invalida"

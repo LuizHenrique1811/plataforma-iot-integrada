@@ -22,6 +22,7 @@ from dominio.modelos import (
     TipoOrigem,
 )
 from dominio.paginacao import Ordenacao, Pagina, ParametrosDePagina
+from dominio.regras import Alarme, EstadoAlarme, EstadoDaRegra, Regra, TipoCondicao
 
 
 def _paginar(itens: list[Any], pagina: ParametrosDePagina, ordenacao: Ordenacao) -> Pagina[Any]:
@@ -289,3 +290,117 @@ class AutenticadorEmMemoria:
         if encontrado is None:
             return None
         return Origem(TipoOrigem.CHAVE, inquilino=encontrado[0], papel=encontrado[1])
+
+
+_COLUNA_DO_FILTRO = {"dispositivo": "id", "dominio": "dominio", "site": "site", "area": "area"}
+
+
+@dataclass
+class RegrasEmMemoria:
+    catalogo: CatalogoEmMemoria
+    repositorio: RepositorioEmMemoria
+    regras: dict[tuple[str, str], Regra] = field(default_factory=dict)
+    estados: dict[tuple[str, str, str], EstadoDaRegra] = field(default_factory=dict)
+
+    def inserir_regra(self, inquilino: str, regra: Regra) -> None:
+        _inserir(self.regras, (inquilino, regra.id), regra, "regra")
+
+    def listar_regras(self, inquilino: str, pagina: ParametrosDePagina, ordenacao: Ordenacao) -> Pagina[Regra]:
+        return _paginar(_do_inquilino(self.regras, inquilino), pagina, ordenacao)
+
+    def regras_ativas(self, inquilino: str, ambito: str) -> list[Regra]:
+        return [regra for regra in _do_inquilino(self.regras, inquilino) if regra.ativa and regra.ambito == ambito]
+
+    def regras_de_ausencia(self, ambito: str) -> list[tuple[str, Regra]]:
+        return [
+            (inquilino, regra)
+            for (inquilino, _), regra in self.regras.items()
+            if regra.ativa and regra.ambito == ambito and regra.condicao.tipo is TipoCondicao.AUSENCIA
+        ]
+
+    def obter_estado(self, inquilino: str, regra: str, dispositivo: str) -> EstadoDaRegra | None:
+        return self.estados.get((inquilino, regra, dispositivo))
+
+    def salvar_estado(self, inquilino: str, regra: str, dispositivo: str, estado: EstadoDaRegra) -> None:
+        self.estados[(inquilino, regra, dispositivo)] = estado
+
+    def ultimas_leituras(
+        self, inquilino: str, filtros: dict[str, str], grandeza: str
+    ) -> list[tuple[str, datetime | None]]:
+        leituras = []
+        for dispositivo in _do_inquilino(self.catalogo.dispositivos, inquilino):
+            if dispositivo.revogado_em is not None:
+                continue
+            if any(getattr(dispositivo, _COLUNA_DO_FILTRO[campo]) != valor for campo, valor in filtros.items()):
+                continue
+            ultima = self.repositorio.ultimo_estado.get((inquilino, dispositivo.id, grandeza))
+            leituras.append((dispositivo.id, ultima[1].timestamp if ultima else dispositivo.criado_em))
+        return leituras
+
+
+@dataclass
+class AlarmesEmMemoria:
+    alarmes: dict[str, Alarme] = field(default_factory=dict)
+
+    def inserir_alarme(self, alarme: Alarme) -> bool:
+        if alarme.origem != "borda" and self._abertos(alarme.inquilino, alarme.regra, alarme.dispositivo):
+            return False
+        self.alarmes[alarme.id] = alarme
+        return True
+
+    def obter_alarme(self, inquilino: str, alarme: str) -> Alarme | None:
+        encontrado = self.alarmes.get(alarme)
+        return encontrado if encontrado and encontrado.inquilino == inquilino else None
+
+    def atualizar_alarme(self, alarme: Alarme) -> None:
+        self.alarmes[alarme.id] = alarme
+
+    def resolver_abertos(self, inquilino: str, regra: str, dispositivo: str, quando: datetime) -> int:
+        abertos = self._abertos(inquilino, regra, dispositivo)
+        for alarme in abertos:
+            self.alarmes[alarme.id] = replace(alarme, estado=EstadoAlarme.RESOLVIDO, resolvido_em=quando)
+        return len(abertos)
+
+    def listar_alarmes(
+        self, inquilino: str, filtros: dict[str, Any], pagina: ParametrosDePagina, ordenacao: Ordenacao
+    ) -> Pagina[Alarme]:
+        encontrados = [
+            alarme
+            for alarme in self.alarmes.values()
+            if alarme.inquilino == inquilino
+            and all(getattr(alarme, campo) == valor for campo, valor in filtros.items())
+        ]
+        return _paginar(encontrados, pagina, ordenacao)
+
+    def _abertos(self, inquilino: str, regra: str, dispositivo: str) -> list[Alarme]:
+        return [
+            alarme
+            for alarme in self.alarmes.values()
+            if (alarme.inquilino, alarme.regra, alarme.dispositivo) == (inquilino, regra, dispositivo)
+            and alarme.estado is not EstadoAlarme.RESOLVIDO
+            and alarme.origem != "borda"
+        ]
+
+
+@dataclass
+class PublicadorEmMemoria:
+    publicadas: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+
+    def publicar(self, topico: str, carga: dict[str, Any]) -> None:
+        self.publicadas.append((topico, carga))
+
+
+@dataclass
+class NotificadorEmMemoria:
+    notificacoes: list[tuple[str, str, str, dict[str, Any]]] = field(default_factory=list)
+
+    def notificar(self, inquilino: str, canal: str, texto: str, contexto: dict[str, Any]) -> None:
+        self.notificacoes.append((inquilino, canal, texto, contexto))
+
+
+@dataclass
+class ClienteWebhookEmMemoria:
+    chamadas: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+
+    def enviar(self, url: str, carga: dict[str, Any]) -> None:
+        self.chamadas.append((url, carga))

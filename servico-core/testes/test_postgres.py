@@ -3,12 +3,13 @@
 import os
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from adaptadores.credenciais import hash_segredo
 from apoio import AGORA, ORIGEM_BORDA, ORIGEM_SOLO, RelogioFixo, mensagem
+from dominio.erros import JaExiste
 from dominio.modelos import Situacao, TipoOrigem
 from dominio.pipeline import PipelineDeIngestao
 
@@ -315,3 +316,110 @@ def test_fluxo_completo_pela_api_com_o_banco(pool):
         assert cliente.delete("/api/v1/dispositivos/ar-01/credencial", headers=gestor).status_code == 204
         assert cliente.post("/api/v1/ingestao", json=mensagem(dispositivo="ar-01"), headers=token).status_code == 401
         assert cliente.get("/api/v1/dispositivos/ar-01", headers=gestor).json()["revogado_em"] is not None
+
+
+def test_regras_estado_e_alarmes_no_banco(pool):
+    from adaptadores.postgres.regras import AlarmesPostgres, RegrasPostgres
+    from apoio import regra
+    from dominio.paginacao import Ordenacao, ParametrosDePagina
+    from dominio.regras import Alarme, EstadoAlarme, EstadoDaRegra, Severidade
+
+    regras = RegrasPostgres(pool)
+    sufixo = uuid.uuid4().hex[:6]
+    regras.inserir_regra("coop-cerrado", replace(regra(f"r-{sufixo}"), criado_em=AGORA))
+    regras.inserir_regra(
+        "coop-cerrado",
+        replace(regra(f"a-{sufixo}", "ausencia", operador=None, valor=None, duracao_s=600, site="fazenda-boa-vista")),
+    )
+    regras.inserir_regra("coop-cerrado", regra(f"b-{sufixo}", ambito="borda"))
+    with pytest.raises(JaExiste):
+        regras.inserir_regra("coop-cerrado", regra(f"r-{sufixo}"))
+
+    ativas = {r.id for r in regras.regras_ativas("coop-cerrado", "central")}
+    assert {f"r-{sufixo}", f"a-{sufixo}"} <= ativas and f"b-{sufixo}" not in ativas
+    assert f"a-{sufixo}" in {r.id for _, r in regras.regras_de_ausencia("central")}
+    pagina = regras.listar_regras("coop-cerrado", ParametrosDePagina(tamanho=500), Ordenacao("id"))
+    assert next(r for r in pagina.itens if r.id == f"r-{sufixo}").criado_em == AGORA
+
+    assert regras.obter_estado("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02") is None
+    regras.salvar_estado("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", EstadoDaRegra(True, AGORA, False))
+    regras.salvar_estado("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", EstadoDaRegra(True, AGORA, True))
+    assert regras.obter_estado("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02") == EstadoDaRegra(True, AGORA, True)
+
+    leituras = dict(regras.ultimas_leituras("coop-cerrado", {"site": "fazenda-boa-vista"}, "umidade_solo"))
+    assert "solo-talhao07-02" in leituras and "revogado-01" not in leituras
+
+    alarmes = AlarmesPostgres(pool)
+
+    def alarme(origem="central"):
+        return Alarme(str(uuid.uuid4()), "coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", Severidade.CRITICO,
+                      EstadoAlarme.ATIVO, AGORA, "Solo seco", origem)  # fmt: skip
+
+    primeiro = alarme()
+    assert alarmes.inserir_alarme(primeiro) is True
+    assert alarmes.inserir_alarme(alarme()) is False  # índice único parcial: um aberto por regra e dispositivo
+    assert alarmes.inserir_alarme(alarme("borda")) is True
+    assert alarmes.obter_alarme("coop-cerrado", primeiro.id).mensagem == "Solo seco"
+    assert alarmes.obter_alarme("coop-cerrado", "nao-e-uuid") is None
+    alarmes.atualizar_alarme(replace(primeiro, estado=EstadoAlarme.RECONHECIDO, reconhecido_em=AGORA))
+    assert alarmes.obter_alarme("coop-cerrado", primeiro.id).estado is EstadoAlarme.RECONHECIDO
+    assert alarmes.resolver_abertos("coop-cerrado", f"r-{sufixo}", "solo-talhao07-02", AGORA) == 1
+    abertos = alarmes.listar_alarmes(
+        "coop-cerrado",
+        {"estado": "ativo", "severidade": "critico"},
+        ParametrosDePagina(tamanho=500),
+        Ordenacao("ocorrido_em", True),
+    )
+    assert [a.origem for a in abertos.itens if a.regra == f"r-{sufixo}"] == ["borda"]
+
+
+def test_regra_dispara_alarme_pela_api_com_o_banco(pool):
+    from fastapi.testclient import TestClient
+
+    from apoio import CONTRATOS
+    from configuracao import Configuracao
+    from principal import criar_aplicacao
+
+    inquilino = f"inq-{uuid.uuid4().hex[:8]}"
+    admin = {"X-Chave-API": "admin-pg", "X-Inquilino": inquilino}
+    agora = datetime.now(UTC)
+    with TestClient(
+        criar_aplicacao(Configuracao(banco_url=URL, contratos_dir=CONTRATOS, chave_admin="admin-pg"))
+    ) as cliente:
+        cliente.post("/api/v1/inquilinos", json={"id": inquilino, "nome": "Teste"}, headers=admin)
+        for caminho, corpo in (
+            ("/api/v1/catalogo/dominios", {"id": "armazenagem", "nome": "Armazenagem"}),
+            (
+                "/api/v1/catalogo/perfis",
+                {
+                    "id": "silo",
+                    "nome": "Silo",
+                    "intervalo_envio_s": 900,
+                    "grandezas": [{"grandeza": "temperatura_graos", "unidade": "Cel"}],
+                },
+            ),
+            ("/api/v1/sites", {"id": "fazenda", "nome": "Fazenda"}),
+            (
+                "/api/v1/regras",
+                {
+                    "id": "quente",
+                    "nome": "Quente",
+                    "acoes": [{"tipo": "alarme", "severidade": "critico"}],
+                    "condicao": {"tipo": "limite", "grandeza": "temperatura_graos", "operador": ">", "valor": 30},
+                },
+            ),
+        ):
+            assert cliente.post(caminho, json=corpo, headers=admin).status_code == 201
+        resposta = cliente.post(
+            "/api/v1/dispositivos",
+            json={"id": "silo-02", "perfil": "silo", "dominio": "armazenagem", "site": "fazenda"},
+            headers=admin,
+        )
+        token = {"Authorization": f"Bearer {resposta.json()['token']}"}
+        for segundos, valor in ((60, 35), (30, 36), (10, 20)):
+            carga = mensagem(dispositivo="silo-02", timestamp=(agora - timedelta(seconds=segundos)).isoformat(),
+                             medidas=[{"grandeza": "temperatura_graos", "valor": valor}])  # fmt: skip
+            assert cliente.post("/api/v1/ingestao", json=carga, headers=token).status_code == 202
+        [alarme] = cliente.get("/api/v1/alarmes", headers=admin).json()["itens"]
+        assert (alarme["regra"], alarme["estado"]) == ("quente", "resolvido")
+        assert cliente.get("/api/v1/regras", headers=admin).json()["itens"][0]["condicao"]["valor"] == 30

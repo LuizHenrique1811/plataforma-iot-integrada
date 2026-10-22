@@ -122,3 +122,27 @@ class ConsumidorMqtt:
             observar(resultado, "mqtt", time.perf_counter() - inicio)
         if mensagem.qos > 0:
             self._cliente.ack(mensagem.mid, mensagem.qos)
+
+
+class PublicadorMqtt:
+    """Publica comandos e eventos de regras (QoS 1). Enquanto desconectado, o cliente guarda as publicações."""
+
+    def __init__(self, url: str, *, cliente_id: str) -> None:
+        endereco = urlparse(url)
+        self._host = endereco.hostname or "localhost"
+        self._porta = endereco.port or 1883
+        self._cliente = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=cliente_id, protocol=mqtt.MQTTv311)
+        if endereco.username:
+            self._cliente.username_pw_set(endereco.username, endereco.password)
+        self._cliente.reconnect_delay_set(1, 30)
+
+    def iniciar(self) -> None:
+        self._cliente.connect_async(self._host, self._porta, keepalive=30)
+        self._cliente.loop_start()
+
+    def parar(self) -> None:
+        self._cliente.disconnect()
+        self._cliente.loop_stop()
+
+    def publicar(self, topico: str, carga: dict) -> None:
+        self._cliente.publish(topico, json.dumps(carga), qos=1)

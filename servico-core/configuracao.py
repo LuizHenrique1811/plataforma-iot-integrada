@@ -27,6 +27,8 @@ class Configuracao:
     # Nome do grupo de assinatura compartilhada, para dividir a carga entre réplicas; vazio desliga.
     mqtt_grupo: str | None = None
     mqtt_trabalhadores: int = 8
+    # Intervalo da verificação de regras de ausência de dados.
+    verificacao_ausencia_s: float = 30.0
 
     @classmethod
     def do_ambiente(cls, ambiente: Mapping[str, str] = os.environ) -> Configuracao:
@@ -44,6 +46,7 @@ class Configuracao:
             mqtt_cliente=ambiente.get("MQTT_CLIENTE") or f"servico-core-{papel}-{socket.gethostname()}",
             mqtt_grupo=ambiente.get("MQTT_GRUPO") or None,
             mqtt_trabalhadores=int(ambiente.get("MQTT_TRABALHADORES", "8")),
+            verificacao_ausencia_s=float(ambiente.get("VERIFICACAO_AUSENCIA_S", "30")),
         )
 
 

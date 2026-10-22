@@ -61,3 +61,28 @@ def mensagem(**campos) -> dict:
     }
     base.update(campos)
     return {chave: valor for chave, valor in base.items() if valor is not None}
+
+
+def regra(
+    id_: str = "umidade-baixa",
+    tipo: str = "limite",
+    grandeza: str = "umidade_solo",
+    operador: str | None = "<",
+    valor: float | None = 20,
+    duracao_s: int | None = None,
+    acoes=None,
+    ambito: str = "central",
+    ativa: bool = True,
+    **filtros,
+):
+    """Regra de teste; por padrão, umidade do solo abaixo de 20% gera alarme crítico."""
+    from dominio.regras import Acao, Condicao, Regra, Severidade, TipoAcao, TipoCondicao
+
+    return Regra(
+        id_,
+        f"Regra {id_}",
+        Condicao(TipoCondicao(tipo), grandeza, operador, valor, duracao_s, **filtros),
+        tuple(acoes or [Acao(TipoAcao.ALARME, Severidade.CRITICO)]),
+        ambito=ambito,
+        ativa=ativa,
+    )

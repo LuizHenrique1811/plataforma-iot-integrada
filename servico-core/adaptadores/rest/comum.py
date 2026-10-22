@@ -5,13 +5,14 @@ from datetime import UTC, datetime
 from fastapi import Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from adaptadores.rest.erros import corpo_de_erro
-from dominio.erros import AcessoNegado, DadosInvalidos, ErroDeDominio, JaExiste, NaoEncontrado
+from dominio.erros import AcessoNegado, Conflito, DadosInvalidos, ErroDeDominio, JaExiste, NaoEncontrado
 from dominio.modelos import ErroDeCampo
 from dominio.paginacao import TAMANHO_PADRAO, ParametrosDePagina
 
-_STATUS = {AcessoNegado: 403, NaoEncontrado: 404, JaExiste: 409, DadosInvalidos: 400}
+_STATUS = {AcessoNegado: 403, NaoEncontrado: 404, JaExiste: 409, Conflito: 409, DadosInvalidos: 400}
 
 
 def parametros_de_pagina(
@@ -42,3 +43,15 @@ async def tratar_parametros_invalidos(_: Request, erro: RequestValidationError) 
         for item in erro.errors()
     ]
     return JSONResponse(corpo_de_erro("parametros_invalidos", "Parâmetros inválidos.", erros), status_code=400)
+
+
+_CODIGOS_HTTP = {400: "requisicao_invalida", 404: "nao_encontrado", 405: "metodo_nao_permitido"}
+
+
+async def tratar_http_generico(_: Request, erro: StarletteHTTPException) -> JSONResponse:
+    # Erros do próprio framework (corpo ilegível, rota inexistente) também no formato Erro do contrato.
+    return JSONResponse(
+        corpo_de_erro(_CODIGOS_HTTP.get(erro.status_code, "erro_http"), str(erro.detail)),
+        status_code=erro.status_code,
+        headers=getattr(erro, "headers", None),
+    )
