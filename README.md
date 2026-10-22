@@ -2,7 +2,7 @@
 
 Trabalho da disciplina de Internet das Coisas (UniEVANGÉLICA). Implementa a plataforma descrita no Documento de Requisitos v2.0 ([docs/requisitos.md](docs/requisitos.md)), que é a fonte da verdade do projeto. Os IDs citados aqui (RF-XXX-nn, RNF-nn, UC-nn) são os do documento.
 
-> **Status:** em construção. O andamento de cada requisito está em [docs/rastreabilidade.md](docs/rastreabilidade.md).
+> **Status:** MVP concluído e ensaiado do zero. O status de cada requisito (implementado, simplificado ou documentado) e a evidência estão em [docs/rastreabilidade.md](docs/rastreabilidade.md); a arquitetura, em [docs/arquitetura.md](docs/arquitetura.md).
 
 ## Ideias centrais
 
@@ -16,6 +16,9 @@ Trabalho da disciplina de Internet das Coisas (UniEVANGÉLICA). Implementa a pla
 - **Uma imagem, dois ambientes:** o `servico-core` gera uma única imagem Docker. A central usa PostgreSQL + TimescaleDB; a borda usa SQLite cifrado.
 - **Infraestrutura aberta e enxuta:** Mosquitto (MQTT), PostgreSQL + TimescaleDB (séries, catálogo e último estado), Grafana (painéis provisionados) e endpoint `/metrics` no formato Prometheus. Autenticação por token de dispositivo e chave de API com papéis. Redis, Keycloak, servidor Prometheus e PostGIS ficam como evolução ([ADR-0007](docs/adr/0007-infraestrutura-aberta.md)).
 - **Pipeline de ingestão:** autenticar → validar contra o JSON Schema → deduplicar por `id_mensagem` → enriquecer com perfil, domínio, local e área → ordenar pelo `timestamp` da medição → persistir. Mensagens rejeitadas vão para a DLQ com o motivo.
+- **Escala horizontal:** processos sem estado dividem a assinatura MQTT; com 10 deles, a central sustentou 1.000 msg/s no notebook ([ADR-0022](docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)).
+
+Detalhes, diagrama de implantação e padrões aplicados em [docs/arquitetura.md](docs/arquitetura.md).
 
 ## Estrutura do repositório
 
@@ -66,7 +69,7 @@ plataforma-iot-integrada/
 
 ### Comandos, na ordem
 
-Com a central e a borda no ar ([infra/README.md](infra/README.md)), na raiz do repositório:
+Com a central e a borda no ar, seguindo os passos 1 a 4 de [infra/README.md](infra/README.md#como-subir), na raiz do repositório:
 
 **Preparação (antes da apresentação):** cenário rural na central e na borda, cenário urbano na central, regras e tokens.
 
@@ -90,7 +93,11 @@ docker compose -f simuladores/compose.yaml up -d --build reservatorio-javascript
 docker compose -f simuladores/compose.yaml up -d --build rural-python
 ```
 
-**3. Corte de link.** Com o painel do Grafana aberto (<http://localhost:3000>, "Plataforma IoT - visão geral"), corte e religue o link; a fila da borda aparece em <http://localhost:8001/metrics> (`iot_fila_pendente`):
+**3. Corte de link.** Com o painel do Grafana aberto (<http://localhost:3000>, "Plataforma IoT - visão geral") e o log da borda num terminal, corte o link, espere um minuto e religue:
+
+```bash
+docker logs -f iot-borda-servico-core-1
+```
 
 ```bash
 docker network disconnect iot-link iot-borda-servico-core-1
@@ -99,6 +106,8 @@ docker network disconnect iot-link iot-borda-servico-core-1
 ```bash
 docker network connect iot-link iot-borda-servico-core-1
 ```
+
+Durante o corte, o log mostra `sincronização interrompida ... (N pendentes)` com N crescendo, e o painel "bordas sem sincronizar" acusa a borda. Ao religar, aparece `lote sincronizado`, e o histórico do solo e do silo fica completo, uma medição a cada 5 s, sem buracos nem duplicatas. No Docker Desktop, a API da borda em `localhost:8001` não responde enquanto o link está cortado ([infra/README.md](infra/README.md#corte-de-link-na-demonstração)).
 
 **4. Urbano nível 2 (UC-03).** A estação legada publica o JSON do fabricante; o adaptador entra no ar sem reiniciar o núcleo e as medições passam a aparecer para o inquilino `semma`:
 
@@ -118,6 +127,24 @@ docker compose -f simuladores/compose.yaml up -d --build lixeira-java
 
 ```bash
 docker compose -f simuladores/compose.yaml logs -f
+```
+
+**6. Carga (RNF-01, RNF-02).** Pare os simuladores, suba as réplicas de ingestão e rode o teste. Ele imprime a tabela de critérios e grava [testes-sistema/carga/resultado.md](testes-sistema/carga/resultado.md); a vazão e a latência aparecem no Grafana. O teto do notebook fica pouco acima de 1.000 msg/s, então, ao vivo, uma taxa menor (`TAXA=600`) é mais segura, e o resultado de 1.000 msg/s fica no registro ([testes-sistema/carga](testes-sistema/carga/README.md)).
+
+```bash
+docker compose -f simuladores/compose.yaml stop
+```
+
+```bash
+docker compose -f infra/central/compose.yaml --profile escala up -d
+```
+
+```bash
+docker compose -f testes-sistema/carga/compose.yaml run --rm --build carga
+```
+
+```bash
+docker compose -f infra/central/compose.yaml --profile escala stop
 ```
 
 Para encerrar os simuladores e o adaptador:
@@ -147,7 +174,7 @@ Entrega na sexta-feira, 23/10/2026, à noite. As funcionalidades congelam por vo
 - [x] **Regras e alarmes:** ações por Strategy (alarme, notificar em log, comando, webhook, publicar em tópico), regras de limite e de janela de tempo, ciclo de vida do alarme, dado atrasado sem alarme.
 - [x] **Borda:** fila SQLite, sincronização em lotes com remoção só após confirmação, regra local, teste de desconexão de 72 h.
 - [x] **Integração e demonstração:** simuladores em três linguagens (em contêineres), adaptador urbano, painéis do Grafana, `/metrics`, logs JSON, domínio novo por API.
-- [ ] **Fechamento:** rastreabilidade com status e evidências, `docs/arquitetura.md`, README, teste de carga se houver tempo, ensaio da demo do zero.
+- [x] **Fechamento:** rastreabilidade com status e evidências, `docs/arquitetura.md`, README, teste de carga a 1.000 msg/s ([ADR-0022](docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)), ensaio da demo do zero num clone novo.
 
 Se o tempo apertar, são cortados nesta ordem e passam a ser documentados: PostGIS, teste de carga, painéis elaborados, adaptador urbano e cifragem da fila. Não são cortados: o pipeline de ingestão, a borda com sincronização e o teste de desconexão, o domínio novo só por configuração e os simuladores em três linguagens.
 

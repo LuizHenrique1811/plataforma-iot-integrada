@@ -6,7 +6,7 @@ Dois ambientes Docker Compose usam a mesma imagem do `servico-core` com configur
 |---|---|---|
 | [central/](central) | Instância central | Mosquitto, TimescaleDB, Grafana, `servico-core` (PostgreSQL) |
 | [borda/](borda) | Nó de borda | Mosquitto, `servico-core` (SQLite cifrado, fila, regras locais e sincronização) |
-| [grafana/](grafana) | Provisionamento do Grafana | Fonte de dados TimescaleDB (painéis depois) |
+| [grafana/](grafana) | Provisionamento do Grafana | Fonte de dados TimescaleDB e o painel "Plataforma IoT - visão geral" |
 
 O `servico-core` é construído a partir de `servico-core/Dockerfile` no primeiro `up` e aplica as migrações do banco ao iniciar. Redis, Keycloak, o servidor Prometheus e o PostGIS ficaram fora de propósito e estão registrados como evolução ([ADR-0007](../docs/adr/0007-infraestrutura-aberta.md), [ADR-0017](../docs/adr/0017-ultimo-estado-no-postgresql.md), [ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
 
@@ -24,21 +24,37 @@ docker network create iot-link
 docker compose up -d --build
 ```
 
-**3. Chave da borda na central.** Com o inquilino criado na central, emita uma chave de papel `no_borda` (em <http://localhost:8000/docs>, `POST /api/v1/chaves` com `{"papel": "no_borda"}` e o cabeçalho `X-Inquilino`). Ela vai no `CHAVE_CENTRAL` da borda.
+**3. Chave da fila da borda.** Em `infra/borda/`, crie a pasta `segredos/` e, nela, o arquivo `chave-fila` com um conteúdo aleatório. A pasta fica fora do volume de dados e fora do repositório (não existe num clone novo), simulando a mídia separada do [ADR-0014](../docs/adr/0014-chave-da-fila-da-borda.md):
 
-**4. Chave da fila da borda.** Em `infra/borda/`, crie `segredos/chave-fila` com um conteúdo aleatório. A pasta fica fora do volume de dados e fora do repositório, simulando a mídia separada do [ADR-0014](../docs/adr/0014-chave-da-fila-da-borda.md):
+```bash
+mkdir segredos
+```
 
 ```bash
 docker run --rm python:3.12-slim python -c "import secrets; print(secrets.token_hex(32))" > segredos/chave-fila
 ```
 
-**5. Borda.** Em `infra/borda/`, copie `.env.example` para `.env`, preencha `CHAVE_ADMIN` e `CHAVE_CENTRAL` e rode:
+**4. Borda.** Em `infra/borda/`, copie `.env.example` para `.env`, preencha `CHAVE_ADMIN` e rode o comando abaixo. `CHAVE_CENTRAL` pode ficar vazia por enquanto: sem ela, a borda funciona e acumula a fila, mas não sincroniza.
 
 ```bash
 docker compose up -d --build
 ```
 
-Sem `CHAVE_CENTRAL`, a borda funciona e acumula a fila, mas não sincroniza. O catálogo e as regras locais (com `"ambito": "borda"`) são cadastrados pela API da própria borda, em <http://localhost:8001/docs>. A distribuição automática a partir da central é o RF-EDG-04 (Importante).
+**5. Chave da borda na central.** A borda precisa de uma chave de papel `no_borda` emitida pela central. O script de preparação da demonstração ([README](../README.md#comandos-na-ordem)) faz isso: monta os cenários, emite a chave e a grava em `infra/borda/.env`. Ele também troca a chave se a central não a reconhecer mais, por exemplo depois de recriar o banco. Na raiz do repositório:
+
+```bash
+docker compose -f demo/compose.yaml run --rm preparar
+```
+
+Depois, em `infra/borda/`, aplique a chave:
+
+```bash
+docker compose up -d
+```
+
+Sem o script, emita a chave em <http://localhost:8000/docs> (`POST /api/v1/chaves` com `{"papel": "no_borda"}` e o cabeçalho `X-Inquilino`), copie-a para `CHAVE_CENTRAL` e rode o mesmo `docker compose up -d`. O catálogo e as regras locais (com `"ambito": "borda"`) são cadastrados pela API da própria borda, em <http://localhost:8001/docs>; a distribuição automática a partir da central é o RF-EDG-04 (Importante).
+
+**6. Réplicas de ingestão (só para o teste de carga).** Em `infra/central/`, `docker compose --profile escala up -d` acrescenta 9 processos de ingestão; `docker compose --profile escala stop` volta a um só ([ADR-0022](../docs/adr/0022-escala-da-ingestao-com-assinatura-compartilhada.md)).
 
 | Endereço | Central | Borda |
 |---|---|---|
@@ -70,7 +86,13 @@ docker network disconnect iot-link iot-borda-servico-core-1
 docker network connect iot-link iot-borda-servico-core-1
 ```
 
-Durante o corte, a borda aceita as mensagens, executa as regras locais (o comando chega à válvula pelo broker da borda) e acumula a fila (`iot_fila_pendente` em `/metrics`). Ao religar, a sincronização roda a cada 5 s (`SINCRONIZACAO_S`) e esvazia a fila em lotes, removendo cada lote só depois da confirmação da central.
+Durante o corte, a borda aceita as mensagens, executa as regras locais (o comando chega à válvula pelo broker da borda) e acumula a fila. Ao religar, a sincronização roda a cada 5 s (`SINCRONIZACAO_S`) e esvazia a fila em lotes, removendo cada lote só depois da confirmação da central.
+
+No Docker Desktop, a porta publicada da borda (8001: API e `/metrics`) para de responder enquanto o contêiner está fora da rede `iot-link` e volta quando ele é reconectado. Os dados não são afetados, porque os sensores publicam no Mosquitto da borda, que é outro contêiner. Para acompanhar a fila durante o corte, use o log da borda, que mostra `sincronização interrompida ... (N pendentes)` a cada tentativa, ou o painel "bordas sem sincronizar" do Grafana:
+
+```bash
+docker logs -f iot-borda-servico-core-1
+```
 
 O teste de 72 h não depende disso: ele injeta mensagens com timestamps retroativos ([testes-sistema/desconexao](../testes-sistema/desconexao)).
 
