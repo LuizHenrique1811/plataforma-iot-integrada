@@ -1,0 +1,9 @@
+# Análise estática do código Python (RNF-15), executada no CI.
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[lint.isort]
+known-first-party = ["dominio", "portas", "adaptadores", "configuracao", "principal", "apoio"]

@@ -1,0 +1,17 @@
+[project]
+name = "servico-core"
+version = "0.1.0"
+description = "Núcleo da Plataforma IoT Integrada: catálogo, ingestão e regras."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["testes"]
+pythonpath = ["."]
+markers = ["integracao: precisa de PostgreSQL com TimescaleDB (variável BANCO_URL_TESTE)"]
+
+[tool.coverage.run]
+source = ["dominio", "portas", "adaptadores", "configuracao", "principal"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

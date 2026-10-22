@@ -1,0 +1,34 @@
+# Testes do servico-core com um TimescaleDB descartável.
+#   docker compose -f servico-core/compose.testes.yaml run --rm --build testes
+# A senha abaixo só existe neste banco de teste, sem dados reais.
+name: iot-testes
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.31.0-pg17
+    environment:
+      POSTGRES_USER: teste
+      POSTGRES_PASSWORD: teste
+      POSTGRES_DB: teste
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teste -d teste"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  testes:
+    build:
+      context: ..
+      dockerfile: servico-core/Dockerfile
+      target: testes
+    environment:
+      BANCO_URL_TESTE: postgresql://teste:teste@timescaledb:5432/teste
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    # Código montado por cima da imagem para rodar a versão atual sem rebuild.
+    volumes:
+      - ./:/app
+      - ../contratos:/app/contratos:ro

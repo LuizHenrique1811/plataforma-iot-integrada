@@ -1,0 +1,10 @@
+.git
+**/__pycache__
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/.env
+**/node_modules
+docs
+infra
+testes-sistema
