@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Plataforma IoT Integrada - API REST
-  version: 1.0.0
+  version: 1.1.0
   description: |
     API REST da plataforma (seção 4.6 do documento de requisitos). Este arquivo é a fonte da
     verdade: a documentação interativa servida em `/docs` é gerada a partir dele (RF-APP-01).
@@ -1229,6 +1229,13 @@ components:
     Acao:
       type: object
       required: [tipo]
+      description: |
+        Ação executada quando a condição da regra é atendida (RF-PRO-03):
+        - `alarme`: abre um alarme com a `severidade` (padrão `aviso`); fecha sozinho quando a condição deixa de valer.
+        - `notificar`: envia `mensagem` pelo `canal` (no MVP, registrado no log; ADR-0012).
+        - `comando`: publica um comando canônico no tópico `comando` do `dispositivo` de destino.
+        - `webhook`: faz POST do disparo em JSON para a `url`.
+        - `publicar`: publica o disparo em JSON no `topico`, que deve começar pelo inquilino.
       properties:
         tipo:
           enum: [alarme, notificar, comando, webhook, publicar]
@@ -1237,7 +1244,7 @@ components:
         mensagem:
           type: string
         canal:
-          description: Canal de notificação; no MVP, `log` (ADR-0012).
+          description: Canal de notificação (ex.:log, sms, email); no MVP, registrado no log (ADR-0012).
           type: string
         comando:
           type: object
@@ -1247,10 +1254,14 @@ components:
               $ref: '#/components/schemas/Nome'
             parametros:
               type: object
+        dispositivo:
+          description: Destino do comando (ex.:a válvula de irrigação). Se omitido, o próprio dispositivo que disparou a regra.
+          $ref: '#/components/schemas/Identificador'
         url:
           type: string
           format: uri
         topico:
+          description: Tópico MQTT de destino da ação publicar, começando pelo inquilino e sem curingas.
           type: string
 
     Regra:

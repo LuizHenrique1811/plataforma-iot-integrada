@@ -50,7 +50,7 @@
       "items": { "$ref": "#/definitions/medida" }
     },
     "evento": {
-      "description": "Obrigatório quando tipo = evento: alarme, acionamento ou outra ocorrência, inclusive as geradas por regras locais da borda.",
+      "description": "Obrigatório quando tipo = evento: alarme, acionamento ou outra ocorrência, inclusive as geradas por regras locais da borda. Um evento com nome \"alarme\" vira alarme na central, com o horário em que ocorreu (RF-PRO-05).",
       "$ref": "#/definitions/evento"
     },
     "estado": {

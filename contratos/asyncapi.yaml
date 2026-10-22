@@ -41,7 +41,10 @@ channels:
         $ref: '#/components/messages/telemetria'
   evento:
     address: '{inquilino}/{site}/{dominio}/{dispositivo}/evento'
-    description: Ocorrências do dispositivo ou de regras locais da borda (dispositivo -> plataforma).
+    description: |
+      Ocorrências do dispositivo ou de regras locais da borda (dispositivo -> plataforma).
+      Convenção: um evento com `nome` igual a `alarme` vira um alarme na central, com o horário em que
+      ocorreu (RF-PRO-05); `severidade` e `detalhes.regra` e `detalhes.mensagem` são copiados para o alarme.
     parameters:
       inquilino:
         $ref: '#/components/parameters/inquilino'
