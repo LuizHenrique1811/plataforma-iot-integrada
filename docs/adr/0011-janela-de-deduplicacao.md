@@ -11,7 +11,7 @@ O RF-ING-08 exige que uma mensagem reenviada pela borda com o mesmo `id_mensagem
 ## Decisão
 
 - Guardar os `id_mensagem` recebidos por **pelo menos 7 dias**, o que cobre as 72 h de desconexão com mais de duas vezes de folga para atrasos e reenvios.
-- **Na central:** tabela própria de identificadores recebidos (`id_mensagem` único e hora de recepção), particionada por tempo, com política de retenção de 7 dias. A inserção do identificador e das medidas acontece na mesma transação.
+- **Na central:** tabela própria de identificadores recebidos, com `id_mensagem` como chave primária e a hora de recepção. É uma tabela comum, não uma hypertable, porque o TimescaleDB não aceita chave única só no `id_mensagem`; as linhas com mais de 7 dias são apagadas periodicamente. A inserção do identificador e das medidas acontece na mesma transação.
 - **Na borda:** a fila só marca um lote como enviado depois da resposta da central. Um reenvio após falha é seguro porque a central deduplica.
 
 ## Alternativas consideradas

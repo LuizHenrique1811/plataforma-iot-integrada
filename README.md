@@ -76,7 +76,7 @@ plataforma-iot-integrada/
 
 Entrega na sexta-feira, 23/10/2026, à noite. As funcionalidades congelam por volta das 18h; o restante do tempo é para documentação e ensaio.
 
-- [ ] **Base:** estrutura, contratos (JSON Schema, AsyncAPI, OpenAPI), Compose da central e da borda, CI que valida os contratos.
+- [x] **Base:** estrutura, contratos (JSON Schema, AsyncAPI, OpenAPI), Compose da central e da borda, CI que valida os contratos.
 - [ ] **Núcleo central:** catálogo e cadastro com `tenant_id`, token por dispositivo, pipeline de ingestão por HTTP e MQTT, último estado, `/api/v1/ingestao` e `/api/v1/ingestao/lote`, paginação padronizada.
 - [ ] **Regras e alarmes:** ações por Strategy (alarme, notificar em log, comando, webhook, publicar em tópico), regras de limite e de janela de tempo, ciclo de vida do alarme, dado atrasado sem alarme.
 - [ ] **Borda:** fila SQLite, sincronização em lotes com remoção só após confirmação, regra local, teste de desconexão de 72 h.
@@ -97,4 +97,16 @@ Se o tempo apertar, são cortados nesta ordem e passam a ser documentados: PostG
 
 ## Como executar
 
-A infraestrutura da central e da borda sobe com Docker Compose. Os passos, as portas e o corte de link estão em [infra/README.md](infra/README.md). O `servico-core` ainda não tem imagem e entra nos Compose quando o esqueleto existir.
+A central e a borda sobem com Docker Compose. Os passos, as portas e o corte de link estão em [infra/README.md](infra/README.md).
+
+Testes e validação, sem instalar Python, Node ou JDK na máquina (tudo em contêiner):
+
+```bash
+docker compose -f servico-core/compose.testes.yaml run --rm --build testes
+```
+
+```bash
+docker run --rm -v "$PWD/contratos:/c" -w /c node:22-alpine npx -y @asyncapi/cli@6.2.1 validate asyncapi.yaml
+```
+
+O primeiro comando roda os testes do `servico-core` contra um TimescaleDB descartável, valida os contratos (JSON Schema, exemplos e OpenAPI) e exige cobertura mínima de 70%. O segundo valida o AsyncAPI. O CI ([.github/workflows/ci.yaml](.github/workflows/ci.yaml)) roda os dois, o ruff e o build da imagem a cada push.
