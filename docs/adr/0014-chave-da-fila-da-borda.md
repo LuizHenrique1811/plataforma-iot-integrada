@@ -20,11 +20,12 @@ O RF-SEG-05 exige cifrar a fila local da borda, com o critério "disco retirado 
 
 ## Decisão
 
-Opção **2** no trabalho, com a opção **3** documentada como caminho para produção. A cifragem da fila é o último item da ordem de corte do plano: se não couber no prazo, o RF-SEG-05 fica documentado com esta decisão.
+Opção **2** no trabalho, com a opção **3** documentada como caminho para produção.
 
-- A chave fica num arquivo fora do volume de dados da borda e é montada no contêiner como Docker secret (`/run/secrets/...`), nunca na imagem nem no Compose.
-- Na demonstração, a mídia separada é simulada por um diretório fora do volume de dados.
-- **Evidência para o RF-SEG-05:** um teste automatizado copia o arquivo da fila e mostra que ele não abre sem a chave.
+- A chave fica num arquivo fora do volume de dados da borda e é montada no contêiner como Docker secret (`/run/secrets/chave_fila`), nunca na imagem nem no Compose. A chave de 256 bits do SQLCipher é o SHA-256 do conteúdo do arquivo.
+- O banco da borda inteiro (fila, catálogo, medições e alarmes) é aberto pelo SQLCipher (pacote `sqlcipher3`, com a biblioteca embutida) quando `CHAVE_FILA_ARQUIVO` está definida; sem ela, a borda funciona em claro e registra um aviso.
+- Na demonstração, a mídia separada é simulada pela pasta `infra/borda/segredos/`, fora do volume de dados e fora do repositório.
+- **Evidência para o RF-SEG-05:** `test_disco_retirado_nao_revela_os_dados` grava na fila, confere que o conteúdo não aparece no arquivo e que ele não abre sem a chave nem com a chave errada.
 
 ## Consequências
 
