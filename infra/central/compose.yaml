@@ -52,25 +52,34 @@ services:
     depends_on:
       - timescaledb
 
-  # servico-core no papel central: entra quando a imagem existir. É a mesma imagem da borda (ADR-0006).
-  # Nomes das variáveis provisórios; serão definidos no esqueleto do serviço.
-  # servico-core:
-  #   image: plataforma-iot/servico-core:dev
-  #   build: ../../servico-core
-  #   restart: unless-stopped
-  #   environment:
-  #     PAPEL: central
-  #     BANCO_URL: postgresql://${POSTGRES_USER:-iot}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB:-iot}
-  #     MQTT_URL: mqtt://mosquitto:1883
-  #   ports:
-  #     - "${BIND_ADDR:-127.0.0.1}:8000:8000"   # API, Swagger UI (ADR-0019) e /metrics (RF-OBS-01)
-  #   networks:
-  #     default:
-  #     link:
-  #       aliases: [central]   # nome pelo qual a borda encontra a central na rede iot-link
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
+  # servico-core no papel central. É a mesma imagem da borda (ADR-0006).
+  servico-core:
+    image: plataforma-iot/servico-core:dev
+    build:
+      context: ../..
+      dockerfile: servico-core/Dockerfile
+      target: final
+    restart: unless-stopped
+    environment:
+      PAPEL: central
+      BANCO_URL: postgresql://${POSTGRES_USER:-iot}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}@timescaledb:5432/${POSTGRES_DB:-iot}
+      CHAVE_ADMIN: ${CHAVE_ADMIN:?Defina CHAVE_ADMIN no arquivo .env}
+      LOG_NIVEL: ${LOG_NIVEL:-INFO}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"   # API, Swagger UI (ADR-0019) e /metrics (RF-OBS-01)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/saude')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    # Ativar junto com a borda: rede iot-link, pela qual a borda encontra a central como "central".
+    # networks:
+    #   default:
+    #   link:
+    #     aliases: [central]
 
 volumes:
   mosquitto-dados:

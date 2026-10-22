@@ -4,11 +4,11 @@ Dois ambientes Docker Compose usam a mesma imagem do `servico-core` com configur
 
 | Pasta | Ambiente | Serviços |
 |---|---|---|
-| [central/](central) | Instância central | Mosquitto, TimescaleDB, Grafana |
-| [borda/](borda) | Nó de borda | Mosquitto |
+| [central/](central) | Instância central | Mosquitto, TimescaleDB, Grafana, `servico-core` |
+| [borda/](borda) | Nó de borda | Mosquitto (o `servico-core` da borda entra com a fila SQLite) |
 | [grafana/](grafana) | Provisionamento do Grafana | Fonte de dados TimescaleDB (painéis depois) |
 
-O `servico-core` ainda não tem imagem. Os blocos dele já estão nos dois `compose.yaml`, comentados, e entram quando o esqueleto do serviço existir.
+Na central, o `servico-core` é construído a partir de `servico-core/Dockerfile` no primeiro `up` e aplica as migrações do banco ao iniciar.
 
 Redis, Keycloak, o servidor Prometheus e o PostGIS ficaram fora de propósito e estão registrados como evolução ([ADR-0007](../docs/adr/0007-infraestrutura-aberta.md), [ADR-0017](../docs/adr/0017-ultimo-estado-no-postgresql.md), [ADR-0018](../docs/adr/0018-autenticacao-sem-keycloak.md)).
 
@@ -16,14 +16,19 @@ Redis, Keycloak, o servidor Prometheus e o PostGIS ficaram fora de propósito e 
 
 Em cada pasta (`central/` e `borda/`):
 
-1. Copie `.env.example` para `.env` e preencha as senhas. O Compose recusa subir se uma senha obrigatória estiver vazia.
+1. Copie `.env.example` para `.env` e preencha as senhas e a `CHAVE_ADMIN`. O Compose recusa subir se uma delas estiver vazia.
 2. Rode:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-As versões das imagens são fixas.
+As versões das imagens são fixas. Com a central no ar:
+
+- documentação interativa da API: <http://localhost:8000/docs>
+- saúde: <http://localhost:8000/saude>
+- métricas: <http://localhost:8000/metrics>
+- Grafana: <http://localhost:3000>
 
 ## Portas
 
@@ -32,7 +37,7 @@ Todas são publicadas em `127.0.0.1` por padrão. Use `BIND_ADDR=0.0.0.0` no `.e
 | Serviço | Central | Borda |
 |---|---|---|
 | MQTT | 1883 | 1884 |
-| servico-core: API, Swagger UI e `/metrics` | 8000 (futuro) | 8001 (futuro) |
+| servico-core: API, Swagger UI e `/metrics` | 8000 | 8001 (futuro) |
 | PostgreSQL / TimescaleDB | 5432 | — |
 | Grafana | 3000 | — |
 

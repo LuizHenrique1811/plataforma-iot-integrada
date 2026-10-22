@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contratos:
+    name: Contratos e análise estática
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências do validador e do ruff
+        run: pip install "jsonschema[format-nongpl]==4.26.0" pyyaml==6.0.3 openapi-spec-validator==0.9.0 ruff==0.17.1
+      - name: Análise estática (RNF-15)
+        run: |
+          ruff check servico-core contratos
+          ruff format --check servico-core contratos
+      - name: JSON Schema, exemplos e OpenAPI
+        run: python contratos/validar.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: AsyncAPI
+        run: |
+          npx -y @asyncapi/cli@6.2.1 config analytics --disable
+          npx -y @asyncapi/cli@6.2.1 validate contratos/asyncapi.yaml
+
+  servico-core:
+    name: servico-core (testes e cobertura)
+    runs-on: ubuntu-latest
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.31.0-pg17
+        env:
+          POSTGRES_USER: teste
+          POSTGRES_PASSWORD: teste
+          POSTGRES_DB: teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U teste -d teste"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: servico-core
+    env:
+      BANCO_URL_TESTE: postgresql://teste:teste@localhost:5432/teste
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: servico-core/requirements*.txt
+      - name: Dependências
+        run: pip install -r requirements-dev.txt
+      - name: Testes (RNF-15, cobertura mínima de 70%)
+        run: pytest --cov --cov-fail-under=70
+
+  imagem:
+    name: Imagem Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem única (central e borda)
+        run: docker build -f servico-core/Dockerfile --target final -t plataforma-iot/servico-core:ci .
