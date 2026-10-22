@@ -26,8 +26,11 @@ class Configuracao:
     mqtt_cliente: str = "servico-core"
     # Nome do grupo de assinatura compartilhada, para dividir a carga entre réplicas; vazio desliga.
     mqtt_grupo: str | None = None
-    mqtt_trabalhadores: int = 8
-    # Intervalo da verificação de regras de ausência de dados.
+    # Poucas threads por processo: com o GIL, mais threads só disputam a CPU (medido no teste de carga, ADR-0022).
+    mqtt_trabalhadores: int = 3
+    # Falso nas réplicas extras de ingestão: sessão limpa, para uma réplica parada sair do grupo (ADR-0022).
+    mqtt_sessao_persistente: bool = True
+    # Intervalo da verificação de regras de ausência de dados; 0 desliga (réplicas extras, ADR-0022).
     verificacao_ausencia_s: float = 30.0
     # Nó de borda (ADR-0006): identificador, central, chave do nó na central e arquivo da chave da fila.
     borda_id: str | None = None
@@ -52,7 +55,8 @@ class Configuracao:
             mqtt_url=ambiente.get("MQTT_URL") or None,
             mqtt_cliente=ambiente.get("MQTT_CLIENTE") or f"servico-core-{papel}-{socket.gethostname()}",
             mqtt_grupo=ambiente.get("MQTT_GRUPO") or None,
-            mqtt_trabalhadores=int(ambiente.get("MQTT_TRABALHADORES", "8")),
+            mqtt_trabalhadores=int(ambiente.get("MQTT_TRABALHADORES", "3")),
+            mqtt_sessao_persistente=ambiente.get("MQTT_SESSAO_PERSISTENTE", "1").lower() not in ("0", "false"),
             verificacao_ausencia_s=float(ambiente.get("VERIFICACAO_AUSENCIA_S", "30")),
             borda_id=ambiente.get("BORDA_ID") or None,
             central_url=ambiente.get("CENTRAL_URL") or None,

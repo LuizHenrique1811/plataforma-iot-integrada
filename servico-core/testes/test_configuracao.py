@@ -20,6 +20,16 @@ def test_configuracao_lida_do_ambiente():
     assert (config.papel, config.banco_url, config.limite_dado_atual_s) == ("borda", "postgresql://x", 60)
 
 
+@pytest.mark.parametrize(("valor", "persistente"), [(None, True), ("1", True), ("0", False), ("false", False)])
+def test_sessao_mqtt_das_replicas(valor, persistente):
+    ambiente = {"MQTT_GRUPO": "ingestao", "MQTT_TRABALHADORES": "2"}
+    if valor is not None:
+        ambiente["MQTT_SESSAO_PERSISTENTE"] = valor
+    config = Configuracao.do_ambiente(ambiente)
+    lidos = (config.mqtt_grupo, config.mqtt_trabalhadores, config.mqtt_sessao_persistente)
+    assert lidos == ("ingestao", 2, persistente)
+
+
 def test_papel_invalido():
     with pytest.raises(ValueError):
         Configuracao.do_ambiente({"PAPEL": "satelite"})

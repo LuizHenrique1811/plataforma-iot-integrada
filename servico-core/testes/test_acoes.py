@@ -166,3 +166,17 @@ def test_publicador_mqtt_entrega_no_broker():
         assinante.loop_stop()
         assinante.disconnect()
     assert recebidas == [{"regra": "r1"}]
+
+
+@pytest.mark.parametrize(("intervalo", "verifica"), [(30.0, True), (0, False)])
+def test_so_uma_replica_verifica_ausencias(intervalo, verifica):
+    # ADR-0022: com várias réplicas, as extras desligam a verificação para não notificar em dobro.
+    from fastapi.testclient import TestClient
+
+    from configuracao import Configuracao, localizar_contratos
+    from principal import montar_servico
+
+    servico = montar_servico(Configuracao(contratos_dir=localizar_contratos(), verificacao_ausencia_s=intervalo))
+    with TestClient(servico.app):
+        tarefas = {thread.name for thread in threading.enumerate()}
+    assert ("verificacao-ausencia" in tarefas) is verifica

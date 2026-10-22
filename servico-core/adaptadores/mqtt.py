@@ -55,20 +55,25 @@ class ConsumidorMqtt:
         *,
         cliente_id: str,
         grupo: str | None = None,
-        trabalhadores: int = 8,
+        trabalhadores: int = 3,
+        sessao_persistente: bool = True,
     ) -> None:
         endereco = urlparse(url)
         self._host = endereco.hostname or "localhost"
         self._porta = endereco.port or 1883
         self._pipeline = pipeline
         self._grupo = grupo
+        self._persistente = sessao_persistente
         self._parando = False
         self._executor = ThreadPoolExecutor(max_workers=trabalhadores, thread_name_prefix="mqtt")
         self.inscrito = threading.Event()
+        self._desinscrito = threading.Event()
+        # Réplicas extras usam sessão limpa: o Mosquitto continua entregando a parte do grupo a uma sessão
+        # persistente desconectada, e uma réplica parada seguraria essas mensagens até voltar (ADR-0022).
         self._cliente = mqtt.Client(
             CallbackAPIVersion.VERSION2,
             client_id=cliente_id,
-            clean_session=False,
+            clean_session=not sessao_persistente,
             protocol=mqtt.MQTTv311,
             manual_ack=True,
         )
@@ -77,12 +82,17 @@ class ConsumidorMqtt:
         self._cliente.reconnect_delay_set(1, 30)
         self._cliente.on_connect = self._ao_conectar
         self._cliente.on_subscribe = self._ao_inscrever
+        self._cliente.on_unsubscribe = self._ao_desinscrever
         self._cliente.on_message = self._ao_receber
 
     def topicos(self) -> list[str]:
-        # Com grupo, várias réplicas dividem as mensagens por assinatura compartilhada (RNF-09).
+        # Com grupo, várias réplicas dividem as mensagens por assinatura compartilhada (RNF-09, ADR-0022).
         prefixo = f"$share/{self._grupo}/" if self._grupo else ""
         return [f"{prefixo}+/+/+/+/{canal}" for canal in CANAIS]
+
+    def topicos_antigos(self) -> list[str]:
+        """Assinaturas que a sessão persistente pode trazer de antes de o grupo existir (ou mudar)."""
+        return [f"+/+/+/+/{canal}" for canal in CANAIS] if self._grupo else []
 
     def iniciar(self) -> None:
         self._cliente.connect_async(self._host, self._porta, keepalive=30)
@@ -90,6 +100,12 @@ class ConsumidorMqtt:
         log.info("consumidor MQTT iniciado em %s:%s", self._host, self._porta, extra={"entrada": "mqtt"})
 
     def parar(self) -> None:
+        if not self._persistente:
+            # Sessão limpa: o que não for confirmado se perde ao desconectar. Então primeiro sai do grupo, para o
+            # broker parar de mandar, e processa o que já estava a caminho.
+            self._desinscrito.clear()
+            self._cliente.unsubscribe(self.topicos())
+            self._desinscrito.wait(timeout=5)
         # Para de aceitar, termina o que está em andamento (e confirma) e só então desconecta.
         self._parando = True
         self._executor.shutdown(wait=True)
@@ -100,10 +116,16 @@ class ConsumidorMqtt:
         if codigo.is_failure:
             log.error("conexão MQTT recusada: %s", codigo, extra={"entrada": "mqtt"})
             return
+        # Sem isso, uma sessão persistente que já assinava sem grupo receberia cada mensagem duas vezes.
+        if self._persistente and self.topicos_antigos():
+            cliente.unsubscribe(self.topicos_antigos())
         cliente.subscribe([(topico, 1) for topico in self.topicos()])
 
     def _ao_inscrever(self, _cliente, _dados, _mid, _codigos, _propriedades) -> None:
         self.inscrito.set()
+
+    def _ao_desinscrever(self, _cliente, _dados, _mid, _codigos, _propriedades) -> None:
+        self._desinscrito.set()
 
     def _ao_receber(self, _cliente, _dados, mensagem: mqtt.MQTTMessage) -> None:
         if self._parando:

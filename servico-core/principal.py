@@ -151,11 +151,13 @@ def montar_servico(config: Configuracao, *, cliente_da_central: ClienteDaCentral
         ambito=config.papel,
         ao_resolver=aviso_de_resolucao(fila, config.borda_id) if borda else None,
     )
-    verificador = TarefaPeriodica(
-        "verificacao-ausencia", config.verificacao_ausencia_s, lambda: motor.verificar_ausencias(relogio.agora())
-    )
-    ao_iniciar.append(verificador.iniciar)
-    ao_encerrar.insert(0, verificador.parar)
+    # Com várias réplicas, só uma verifica ausências (as demais usam VERIFICACAO_AUSENCIA_S=0, ADR-0022).
+    if config.verificacao_ausencia_s > 0:
+        verificador = TarefaPeriodica(
+            "verificacao-ausencia", config.verificacao_ausencia_s, lambda: motor.verificar_ausencias(relogio.agora())
+        )
+        ao_iniciar.append(verificador.iniciar)
+        ao_encerrar.insert(0, verificador.parar)
 
     sincronizador = None
     if borda:
@@ -192,6 +194,7 @@ def montar_servico(config: Configuracao, *, cliente_da_central: ClienteDaCentral
             cliente_id=config.mqtt_cliente,
             grupo=config.mqtt_grupo,
             trabalhadores=config.mqtt_trabalhadores,
+            sessao_persistente=config.mqtt_sessao_persistente,
         )
         ao_iniciar.append(consumidor.iniciar)
         # O consumidor para antes de tudo, para terminar de gravar o que está em andamento.

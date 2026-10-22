@@ -82,6 +82,57 @@ def test_assinaturas_com_e_sem_grupo(pipeline):
     assert compartilhado.topicos()[0] == "$share/nucleo/+/+/+/+/telemetria"
 
 
+def test_com_grupo_desfaz_as_assinaturas_antigas_da_sessao(pipeline):
+    # A sessão persistente guarda as assinaturas sem grupo; mantê-las faria cada mensagem chegar duas vezes.
+    class Cliente:
+        def __init__(self) -> None:
+            self.chamadas = []
+
+        def unsubscribe(self, topicos):
+            self.chamadas.append(("desfaz", topicos))
+
+        def subscribe(self, topicos):
+            self.chamadas.append(("assina", [topico for topico, _qos in topicos]))
+
+    conectado = SimpleNamespace(is_failure=False)
+    compartilhado, cliente = ConsumidorMqtt(pipeline, "mqtt://broker", cliente_id="f", grupo="nucleo"), Cliente()
+    compartilhado._ao_conectar(cliente, None, None, conectado, None)
+    assert cliente.chamadas == [
+        ("desfaz", ["+/+/+/+/telemetria", "+/+/+/+/evento", "+/+/+/+/estado"]),
+        ("assina", compartilhado.topicos()),
+    ]
+
+    simples, cliente = ConsumidorMqtt(pipeline, "mqtt://broker", cliente_id="g"), Cliente()
+    simples._ao_conectar(cliente, None, None, conectado, None)
+    assert cliente.chamadas == [("assina", simples.topicos())]
+
+
+def test_replica_de_sessao_limpa_sai_do_grupo_antes_de_parar(pipeline, repositorio):
+    # ADR-0022: uma réplica parada não pode continuar no grupo segurando mensagens; e o que já estava a caminho
+    # quando ela pediu para sair ainda é processado e confirmado, porque na sessão limpa nada é reentregue.
+    replica = ConsumidorMqtt(pipeline, "mqtt://broker", cliente_id="h", grupo="nucleo", sessao_persistente=False)
+    assert replica._cliente._clean_session is True
+    chamadas = []
+
+    class Cliente(ClienteFalso):
+        def unsubscribe(self, topicos):
+            chamadas.append(topicos)
+            replica._ao_receber(None, None, publicacao(mensagem(), mid=11))  # chegou antes do UNSUBACK
+            replica._ao_desinscrever(None, None, 1, [], None)
+
+        def disconnect(self):
+            chamadas.append("desconecta")
+
+        def loop_stop(self):
+            pass
+
+    replica._cliente = Cliente()
+    replica.parar()
+    assert chamadas == [replica.topicos(), "desconecta"]
+    assert (len(repositorio.mensagens), replica._cliente.confirmadas) == (1, [(11, 1)])
+    assert ConsumidorMqtt(pipeline, "mqtt://broker", cliente_id="i")._cliente._clean_session is False
+
+
 def test_confirma_so_depois_de_processar(pipeline, repositorio):
     # RNF-10: o PUBACK sai depois da gravação.
     consumidor = ConsumidorMqtt(pipeline, "mqtt://broker", cliente_id="c")

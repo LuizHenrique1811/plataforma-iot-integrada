@@ -106,6 +106,14 @@ class _Conexao:
     def cursor(self) -> Iterator[_Conexao]:
         yield self
 
+    # O modo pipeline do psycopg poupa idas e voltas pela rede; o SQLite é local, então aqui não faz nada.
+    @contextmanager
+    def pipeline(self) -> Iterator[_Conexao]:
+        yield self
+
+    def sync(self) -> None:
+        pass
+
 
 class PoolSqlite:
     """Uma conexão compartilhada e serializada: na borda, o SQLite grava uma transação por vez de todo modo."""

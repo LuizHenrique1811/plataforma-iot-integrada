@@ -290,13 +290,16 @@ class RepositorioDeIngestaoPostgres:
 
     def persistir(self, mensagem: MensagemAceita) -> bool:
         id_mensagem = uuid.UUID(mensagem.id_mensagem)
-        with self._pool.connection() as conexao, conexao.transaction():
-            inseridas = conexao.execute(
+        # Modo pipeline: os comandos seguem juntos e o banco responde de uma vez. São duas idas e voltas por
+        # mensagem em vez de seis, e é isso que limita a vazão da central (ADR-0022).
+        with self._pool.connection() as conexao, conexao.pipeline() as pipeline, conexao.transaction():
+            registro = conexao.execute(
                 "INSERT INTO mensagens_recebidas (id_mensagem, inquilino_id, recebido_em)"
                 " VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 (id_mensagem, mensagem.inquilino, mensagem.recebido_em),
-            ).rowcount
-            if inseridas == 0:
+            )
+            pipeline.sync()  # a resposta decide se a mensagem é nova
+            if registro.rowcount == 0:
                 return False
             with conexao.cursor() as cursor:
                 if mensagem.medidas:

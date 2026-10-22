@@ -24,6 +24,7 @@ from dominio.modelos import (
     MensagemRejeitada,
     Motivo,
     Origem,
+    Perfil,
     Rejeicao,
     ResultadoIngestao,
     ResultadoLote,
@@ -77,6 +78,7 @@ class PipelineDeIngestao:
         self._limite_dado_atual = limite_dado_atual
         self._tolerancia_futuro = tolerancia_futuro
         self._observadores = observadores
+        self._perfis: dict[tuple[str, str], Perfil] = {}
         self._filtros: tuple[Callable[[_Contexto], ResultadoIngestao | None], ...] = (
             self._validar,
             self._autorizar,
@@ -256,10 +258,24 @@ class PipelineDeIngestao:
 
     # Apoio ---------------------------------------------------------------------------------
 
+    def _perfil(self, inquilino: str, perfil_id: str) -> Perfil | None:
+        """Perfil do dispositivo, guardado depois da primeira consulta (ADR-0022).
+
+        Um perfil não muda depois de criado: o contrato não tem rota para alterá-lo nem removê-lo, e uma
+        versão nova do perfil é um perfil novo (Type Object). Por isso o cache não expira.
+        """
+        chave = (inquilino, perfil_id)
+        perfil = self._perfis.get(chave)
+        if perfil is None:
+            perfil = self._catalogo.obter_perfil(inquilino, perfil_id)
+            if perfil is not None:
+                self._perfis[chave] = perfil
+        return perfil
+
     def _normalizar_medidas(
         self, ctx: _Contexto, dispositivo: DispositivoCadastrado, brutas: list[dict[str, Any]]
     ) -> tuple[Medida, ...] | ResultadoIngestao:
-        perfil = self._catalogo.obter_perfil(dispositivo.inquilino, dispositivo.perfil)
+        perfil = self._perfil(dispositivo.inquilino, dispositivo.perfil)
         if perfil is None:
             return self._rejeitar(
                 ctx,

@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 def criar_pool(url: str, tamanho_maximo: int = 10) -> ConnectionPool:
-    pool = ConnectionPool(url, min_size=1, max_size=tamanho_maximo, open=False)
+    # autocommit: uma consulta avulsa não abre transação (nem custa um COMMIT a mais, ADR-0022). Gravações com
+    # mais de um comando usam conexao.transaction() explicitamente.
+    pool = ConnectionPool(url, min_size=1, max_size=tamanho_maximo, open=False, kwargs={"autocommit": True})
     pool.open(wait=True, timeout=30)
     return pool
 

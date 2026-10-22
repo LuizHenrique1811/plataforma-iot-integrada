@@ -251,3 +251,18 @@ def test_envelope_de_lote_invalido_nao_processa_nada(pipeline, repositorio):
     assert lote.erros_envelope
     assert lote.resultados == ()
     assert repositorio.mensagens == []
+
+
+def test_perfil_e_consultado_uma_vez(pipeline, catalogo, monkeypatch):
+    # ADR-0022: perfis não mudam depois de criados, então o pipeline não os consulta a cada mensagem.
+    consultas = []
+    original = catalogo.obter_perfil
+
+    def contar(inquilino, perfil):
+        consultas.append(perfil)
+        return original(inquilino, perfil)
+
+    monkeypatch.setattr(catalogo, "obter_perfil", contar)
+    for _ in range(3):
+        assert pipeline.processar(mensagem(timestamp=None), ORIGEM_SOLO).situacao is Situacao.ACEITA
+    assert consultas == ["sensor-solo"]
